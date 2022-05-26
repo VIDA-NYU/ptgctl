@@ -85,7 +85,7 @@ def test(api, stream_id=None, **kw):
 
 def holo_debug(api, stream_id=None, **kw):
     from .. import holoframe
-    stream_id = stream_id or '+'.join(api.streams())
+    stream_id = stream_id or '+'.join(api.streams.ls())
     for sid, ts, data in api.data(stream_id, **kw):
         print(sid, ts)
         try:
@@ -108,6 +108,18 @@ def _pretty_val(x):
         detail = f"\n{x}" if x.size < 20 else f'(min={x.min():.3g}, max={x.max():.3g})'
         return f'{x.shape} {detail}'
     return str(x)[:50]
+
+
+
+@util.async2sync
+async def debug_holo_stream(api, stream_id, **kw):
+    '''Show a video stream from the API.'''
+    from .. import holoframe
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        while True:
+            for sid, ts, data_bytes in await ws.recv_data():
+                data = holoframe.load(data_bytes)
+                print(sid, ts, len(data_bytes), {k: getattr(x, 'shape', None) or x for k, x in data.items()})
 
 
 @util.async2sync

@@ -64,6 +64,7 @@ class API:
         '''Login using a username and password to retrieve a token.'''
         assert username and password, "I assume you don't want an empty username and password"
         # get token
+        log.info('login: %s %s', username, f'{self.url}/token')
         r = self.sess.post(url=f'{self.url}/token',data={'username': username, 'password': password})
         # store token
         self.token = r.json()['access_token']
@@ -91,6 +92,8 @@ class API:
 
         # make the request and time it
         log.info('request: %s %s', method, url)
+        log.debug('headers: %s', headers)
+        log.debug('request args: %s', kw)
         t0 = time.time()
         r = self.sess.request(method, url, headers=headers, **kw)
         log.info('took %.3g secs', time.time() - t0)
@@ -123,7 +126,7 @@ class API:
         '''Data Stream metadata.'''
         def ls(self, info: bool=None) -> list:
             '''Get all streams'''
-            return self._get('streams', params={'info': info}).json()
+            return self._get('streams/', params={'info': info}).json()
 
         def get(self, id: str, report_error: bool=None) -> dict:
             '''Get a stream.
@@ -371,6 +374,7 @@ class WebsocketStream:
 
     async def __aenter__(self):
         import websockets
+        self.ack = self.kw.get('ack')
         self.connect = websockets.connect(*self.a, **self.kw)
         self.ws = await self.connect.__aenter__()
         await asyncio.sleep(1e-6)

@@ -49,6 +49,9 @@ def getLogger(name=__name__.split('.')[0], level='info'):
     '''Get a logger.
     '''
     log = logging.getLogger(name)
+    log.propagate = False
+    if log.handlers:
+        return log
     log_handler = logging.StreamHandler(sys.stderr)
     formatter = ColorFormatter('%(message)s')
     log_handler.setFormatter(formatter)

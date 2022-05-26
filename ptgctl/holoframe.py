@@ -5,10 +5,59 @@ This is here for convenience but won't be necessary for too much longer
 '''
 # from collections import namedtuple
 import struct
-import cv2
-from PIL import Image
-import numpy as np
+from collections import defaultdict
 import orjson
+import numpy as np
+from PIL import Image
+import cv2
+
+
+
+
+def load_all(read_data, dt_tol=0.1):
+    '''Take data read from the API and convert them into hololens frames.
+
+    Arguments:
+        read_data (list): Each item should be (stream_id, ts, data_bytes)
+    '''
+    time_steps = defaultdict(dict)
+    for stream_id, ts, data_bytes in read_data:
+        time_steps[stream_id].update(load(data_bytes))
+
+    # time_steps = defaultdict(lambda: defaultdict(dict))
+    # for stream_id, ts, data_bytes in read_data:
+    #     time_steps[ts][stream_id].update(load(data_bytes))
+    # # TODO merge close timesteps
+    # time_steps = sorted(time_steps.items())
+    # first = time_steps[0]
+
+    return dict(time_steps)
+
+
+
+def unpack(data, keys):
+    return [nested_key(data, k) for k in keys]
+
+
+def nested_key(data, key):
+    d = data
+    try:
+        for ki in key.split('.'):
+            ki = int(ki) if isinstance(d, list) else ki
+            # print(ki, set(d))
+            d = d[ki]
+            # print(type(d))
+        return d
+    except KeyError:
+        raise KeyError(f'{key!r} - {ki!r} not in {set(d) if isinstance(d, dict) else len(d) if isinstance(d, (list, tuple)) else d}')
+
+
+def get_image(data):
+    '''Given a loaded dict of hololens data, access an image instance.'''
+    for k in ['main', 'glf', 'grf', 'glr', 'grr']:
+        im = data.get(k)
+        if im is not None:
+            return im
 
 
 class SensorType:
@@ -70,7 +119,7 @@ def load(data):
 
     # special cases
 
-    if ftype in {34}: # we interrupt this message to bring you hand+eye
+    if ftype in {34}: # hand+eye - no header
         return dict(orjson.loads(full_data.decode('ascii')), frame_type=ftype)
     if ftype == 172:
         data = full_data
@@ -90,34 +139,43 @@ def load(data):
 
         if ftype in {SensorType.PV}:
             im = cv2.cvtColor(im[:,:-8], cv2.COLOR_YUV2RGB_NV12)
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
         elif ftype in {SensorType.GLF, SensorType.GRR}:
             im = np.rot90(im, -1)
         elif ftype in {SensorType.GRF, SensorType.GLL}:
             im = np.rot90(im)
+        d = dict(frame_type=ftype, image=im)
             
         rig2world = focal = None
         if info_size > 0:
-            rig2world, data = np_pop(data, np.float32, (4,4))
-            rig2world = rig2world.T
+            x2world, data = np_pop(data, np.float32, (4,4))
+            x2world = x2world.T
+            d.update({'cam2world' if ftype in {SensorType.PV} else 'rig2world': x2world})
             if ftype in {SensorType.PV}:
                 focal, data = np_pop(data, np.float32, (2,))
+                principal_pt, data = np_pop(data, np.float32, (2,))
+                d.update(dict(focal=focal, principal_point=principal_pt))
 
-        return dict(frame_type=ftype, image=im, rig2world=rig2world, focal=focal)
+        return d
 
     # depth
 
     if ftype in {SensorType.DepthLT, SensorType.DepthAHAT}:
         depth, data = np_pop(data, depth_dtype, (h, w), im_size)
+        d = dict(frame_type=ftype, depth=depth)
 
-        ab = cam2world = None
+        ab = rig2world = None
         if info_size >= im_size:
             info_size -= im_size
             ab, data = np_pop(data, np.uint16, (h, w), im_size)
+            d.update(dict(infrared=ab))
         
         if info_size > 0:
-            cam2world, data = np_pop(data, np.float32, (4,4))
-            cam2world = cam2world.T
-        return dict(frame_type=ftype, depth=depth, ab_image=ab, cam2world=cam2world)
+            rig2world, data = np_pop(data, np.float32, (4,4))
+            rig2world = rig2world.T
+            d.update(dict(rig2world=rig2world))
+        
+        return d
 
     # sensors
 
@@ -134,15 +192,17 @@ def load(data):
 
     if ftype in {SensorType.Calibration}:
         # assert stride == 4  # just checking
-        lut, data = np_pop(data, np.float32, (-1,3), im_size)
-        rig2world, data = np_pop(data, np.float32, (4,4))
-        rig2world = rig2world.T
-        return dict(frame_type=ftype, lut=lut, rig2world=rig2world)
+        lut, data = np_pop(data, np.float32, (w * h, 3))
+        rig2cam, data = np_pop(data, np.float32, (4,4))
+        rig2cam = rig2cam.T
+        return dict(frame_type=ftype, lut=lut, rig2cam=rig2cam)
 
     raise ValueError(f"unknown frame type: {ftype}")
 
 
-def np_read(data: bytes, dtype, *a, shape=None, **kw):
+
+
+def np_read(data: bytes, dtype, shape=None):
     '''Reads a numpy array of type and shape from the start of a byte array.'''
     x = np.frombuffer(data, dtype)
     return x.reshape(shape) if shape else x.item() if x.size == 1 else x
