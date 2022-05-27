@@ -141,7 +141,7 @@ def astable(data, cols=None, drop=None, no_data_text='no data', **kw):
     import tabulate
 
     # get all columns across the data
-    all_cols = {c for d in data for c in d} - set(drop or ())
+    all_cols = {c for d in data for c in (d if isinstance(d, dict) else ())} - set(drop or ())
     # default auto columns
     cols = cols or sorted(all_cols)
     # break out columns into a uniform list
