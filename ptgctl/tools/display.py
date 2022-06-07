@@ -13,27 +13,25 @@ log = util.getLogger(__name__, 'debug')
 
 
 @util.async2sync
-async def imshow(api, stream_id, delay=1, raw_holo=False, **kw):
+async def imshow(api, stream_id, delay=1, **kw):
     '''Show a video stream from the API.'''
     import cv2
-    if raw_holo:
-        from .. import holoframe
+    from .. import holoframe
     async with api.data_pull_connect(stream_id, **kw) as ws:
         t0 = time.time()
         i = 0
         while True:
             for sid, ts, data in await ws.recv_data():
                 i += 1
-                if raw_holo:
-                    im = holoframe.load(data)['image']
-                else:
-                    im = np.array(Image.open(io.BytesIO(data)))
+                im = holoframe.load(data)['image']
                 im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
 
                 ts_frame = util.ts2datetime(ts)
                 latency = datetime.datetime.now() - ts_frame
                 text = f"{ts_frame.strftime('%c.%f')} [fps={i / (time.time() - t0):.1f}, {latency} latency]"
-                cv2.putText(im, text, (10, 30), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0,0,0))
+                print(sid, len(data), ts, text)
+                # cv2.putText(im, text, (10, 30), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0,0,0))
+                cv2.putText(im, text, (10, 15), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
                 cv2.imshow(sid, im)
             if cv2.waitKey(delay) & 0xFF == ord('q'):
                 break
@@ -143,21 +141,62 @@ async def audio(api, stream_id, **kw):
 
 
 
+# @util.async2sync
+# async def debug_holo_stream(api, stream_id, **kw):
+#     '''Show a video stream from the API.'''
+#     from contextlib import ExitStack
+#     import tqdm
+#     from .. import holoframe
+#     async with api.data_pull_connect(stream_id, **kw) as ws:
+#         pbars = {}
+#         with ExitStack() as stack:
+#             while True:
+#                 for sid, ts, data_bytes in await ws.recv_data():
+#                     if sid not in pbars:
+
+
+#                     data = holoframe.load(data_bytes)
+#                     print(sid, ts, len(data_bytes), {k: getattr(x, 'shape', None) or x for k, x in data.items()})
+
+
+# @util.async2sync
+# async def stream(api, stream_id, **kw):
+#     '''Show a video stream from the API.'''
+#     from .. import holoframe
+#     async with api.data_pull_connect(stream_id, **kw) as ws:
+        
+
 
 # 70 levels of gray
-gscale1 = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
-gscale2 = '@%#*+=-:. '
+# gscale1 = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,\"^`'. "
+# gscale2 = '@%#*+=-:. '
 gscale3 = "##&@$%*+=:-.  "
 chars = np.array(list(gscale3)[::-1])  # setting the default as dark mode
-def _ascii_image(img, width=60, invert=False):
+def ascii_image(img, width=60, height=None, invert=False, preserve_aspect=True):
+    if img is None:
+        return ''
+    if isinstance(img, np.ndarray):
+        img = Image.fromarray(img)
     # resize the image
     w, h = img.size
-    img = img.resize((width, int((h/w) * width * 0.55)))
+    img = img.resize(_aspect(width, height, w, h, preserve_aspect))
     # convert image to greyscale format
     img = np.asarray(img.convert('L'))
     # quantize uint8 to ascii
     img = chars[::-1 if invert else 1][(img // (256 / len(chars))).astype(int)]
     return '\n'.join(''.join(map(str, xi)) for xi in img) 
 
+
+def _aspect(w, h, w_im, h_im, preserve=True):
+    aspect = w_im / h_im
+    w_aspect = h * aspect if h else w
+    h_aspect = w * aspect if w else h
+    w = w or w_aspect
+    h = h or h_aspect
+    if preserve:
+        w = min(w, w_aspect)
+        h = min(h, h_aspect)
+    return int(w), int(h)
+
 def ascii_test(api, path, width=60, invert=False):
-    print(_ascii_image(Image.open(path), width, invert))
+    print(ascii_image(Image.open(path), width, invert))
