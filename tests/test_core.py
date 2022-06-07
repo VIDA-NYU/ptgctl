@@ -1,9 +1,9 @@
 import ptgctl
 
 
-def test_core():
-	api = ptgctl.API()
+# def test_core():
+# 	api = ptgctl.API()
 
-	streams = api.streams.ls()
-	print(streams)
-	1/0
+# 	streams = api.streams.ls()
+# 	print(streams)
+# 	1/0
