@@ -6,6 +6,7 @@ __pycache__/
 # mac
 .DS_Store
 
+*.pt
 
 # trash folders
 shh/
