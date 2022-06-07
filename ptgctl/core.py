@@ -8,10 +8,11 @@ from urllib.parse import urlencode
 from . import util
 from .util import color
 
-log = util.getLogger(__name__, level='debug')
+log = util.getLogger(__name__, level='info')
 
 
-URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
+# URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
+URL = 'https://api.ptg.poly.edu'
 LOCAL_URL = 'http://localhost:7890'
 
 class API:
@@ -22,7 +23,7 @@ class API:
     _TOKEN_CACHE = '~/.ptg'
     _token = None
 
-    def __init__(self, url: str=None, token=None, username: str=None, password: str=None, local: bool=True):
+    def __init__(self, url: str=None, token=None, username: str=None, password: str=None, local: bool=False):
         url = url or (LOCAL_URL if local else URL)
         # get url and make sure that it has a protocol on it.
         self.url = url = url.rstrip('/')
@@ -65,7 +66,7 @@ class API:
         assert username and password, "I assume you don't want an empty username and password"
         # get token
         log.info('login: %s %s', username, f'{self.url}/token')
-        r = self.sess.post(url=f'{self.url}/token',data={'username': username, 'password': password})
+        r = self.sess.post(url=f'{self.url}/token', data={'username': username, 'password': password})
         # store token
         self.token = r.json()['access_token']
         if self._TOKEN_CACHE:
@@ -85,7 +86,7 @@ class API:
 
     def _do(self, method: str, *url_parts, headers: dict=None, params: dict=None, raises: bool=True, **kw) -> requests.Response:
         '''Generic request wrapper.'''
-        url = os.path.join(self.url, *map(str, url_parts))
+        url = os.path.join(self.url, *map(str, (u for u in url_parts if u is not None)))
         headers = self._headers(headers)
         if params:
             kw['params'] = {k: v for k, v in params.items() if k and v is not None}
@@ -128,6 +129,13 @@ class API:
             '''Get all streams'''
             return self._get('streams/', params={'info': info}).json()
 
+        # def ls2(self) -> dict:
+        #     '''Get all streams'''
+        #     return {
+        #         s: self.get(s)
+        #         for s in self.ls()
+        #     }
+
         def get(self, id: str, report_error: bool=None) -> dict:
             '''Get a stream.
             
@@ -160,6 +168,52 @@ class API:
             '''
             return self._delete('streams', id).json()
 
+
+    # recordings
+
+    class recordings(util.Nest):
+        '''Data Stream metadata.'''
+        def ls(self, info: bool=None) -> list:
+            '''Get all recordings'''
+            return self._get('recordings', params={'info': info}).json()
+
+        def get(self, id: str, report_error: bool=None) -> dict:
+            '''Get a recording.
+            
+            Arguments:
+                id (str): The stream ID.
+            '''
+            return self._get('recordings', id).json()
+
+        def start(self, id: str=None):
+            '''Create a stream.
+            
+            Arguments:
+                id (str): The stream ID.
+                desc (str): The stream description.
+                override (bool): Whether to overwrite an existing stream. Otherwise it will throw an error.
+                **meta: Any arbitrary metadata to attach to the stream.
+            '''
+            return self._put('recordings', id).json()
+
+        def stop(self, id: str=None):
+            '''Create a stream.
+            
+            Arguments:
+                id (str): The stream ID.
+                desc (str): The stream description.
+                override (bool): Whether to overwrite an existing stream. Otherwise it will throw an error.
+                **meta: Any arbitrary metadata to attach to the stream.
+            '''
+            return self._put('recordings', id, 'stop').json()
+
+        def delete(self, id: str) -> bool:
+            '''Delete a stream.
+            
+            Arguments:
+                id (str): The stream ID.
+            '''
+            return self._delete('streams', id).json()
 
     # recipes
 
@@ -337,16 +391,6 @@ class API:
         '''
         return self._ws('data', stream_id, 'push', **kw)
 
-    # recording TODO
-
-    def start_recording(self, stream_id: str):
-        '''Start a recording. Not Implemented'''
-        raise NotImplementedError
-
-    def stop_recording(self, stream_id: str):
-        '''Stop a recording. Not Implemented'''
-        raise NotImplementedError
-
     # tools
 
     @util.bound_module
@@ -354,10 +398,20 @@ class API:
         from .tools import display
         return display
 
+    # @util.bound_module
+    # def mock(self) -> util.BoundModule:  # lazy import and bind
+    #     from .tools import mock
+    #     return mock
+
     @util.bound_module
-    def mock(self) -> util.BoundModule:  # lazy import and bind
-        from .tools import mock
-        return mock
+    def test(self) -> util.BoundModule:  # lazy import and bind
+        from .tools import test
+        return test
+
+    @util.bound_module
+    def local_record(self) -> util.BoundModule:  # lazy import and bind
+        from .tools import record
+        return record
 
 
 
@@ -442,7 +496,7 @@ class CLI(API):
 
 def main():
     '''Create an auto-magical CLI !! really that's it.'''
-    from .cli_format import yamltable, indent  # installs a formatter for fire
+    from .util.cli_format import yamltable, indent  # installs a formatter for fire
     import fire
     try:
         fire.Fire(CLI)
