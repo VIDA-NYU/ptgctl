@@ -10,7 +10,7 @@ from .token import *
 
 # data parsing
 
-def pack_entries(data):
+def pack_entries(data: list) -> tuple:
     '''Pack multiple byte objects into a single bytearray with numeric offsets.'''
     entries = bytearray()
     offsets = []
@@ -19,7 +19,7 @@ def pack_entries(data):
         entries += d
     return offsets, entries
 
-def unpack_entries(offsets, content):
+def unpack_entries(offsets: list, content: bytes) -> list:
     '''Unpack a single bytearray with numeric offsets into multiple byte objects.'''
     entries = []
     for (sid, ts, i), (_, _, j) in zip(offsets, offsets[1:] + [(None, None, None)]):
@@ -28,23 +28,27 @@ def unpack_entries(offsets, content):
 
 
 
-def parse_time(rid):
+def parse_time(tid: str):
     '''Convert a redis timestamp to a datetime object.'''
-    return datetime.datetime.fromtimestamp(int(rid.split('-')[0])/1000)
+    return datetime.datetime.fromtimestamp(parse_epoch_time(tid))
 
-def parse_epoch_time(rid):
+def parse_epoch_time(tid: str):
     '''Convert a redis timestamp to epoch seconds.'''
-    return int(rid.split('-')[0])/1000
+    return int(tid.split('-')[0])/1000
 
-ts2datetime = parse_time
+ts2datetime = parse_time  # deprecated
 
+def format_time(dt: datetime.datetime):
+    return format_epoch_time(dt.timestamp())
 
+def format_epoch_time(tid: float):
+    return f'{int(tid * 1000)}-0'
 
 
 # misc
 
 
-def filternone(d):
+def filternone(d: dict):
     '''Filter None values from a dictionary. Useful for updating only a few fields.'''
     if isinstance(d, dict):
         return {k: v for k, v in d.items() if v is not None}
@@ -91,8 +95,8 @@ async def async_first_done(*unfinished):
     
     This is used when both sending and receiving data and you interrupt one of them, they should all exit.
     '''
+    finished, unfinished = await asyncio.wait(unfinished, return_when=asyncio.FIRST_COMPLETED)
     try:
-        finished, unfinished = await asyncio.wait(unfinished, return_when=asyncio.FIRST_COMPLETED)
         return next((x for x in (t.result() for t in finished) if x is not None), None)
     finally:
         for task in unfinished:
