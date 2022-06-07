@@ -171,21 +171,21 @@ class ByteParser:
         self.offset = 0
 
     @property
-    def remaining(self):
+    def remaining(self) -> int:
         return len(self.data) - self.offset
 
     @property
-    def total(self):
+    def total(self) -> int:
         return len(self.data)
 
-    def _pop_bytes(self, size):
+    def _pop_bytes(self, size: int) -> memoryview:
         if size is None:  # if None, go to the end
             size = len(self.data) - self.offset
         i, j = self.offset, self.offset + size
         self.offset = j
         return self.data[i:j]
 
-    def _read_np(self, x, dtype, shape=None, T=False):
+    def _read_np(self, x: memoryview, dtype, shape=None, T=False) -> np.ndarray:
         x = np.frombuffer(x, dtype)
         if shape:
             x = x.reshape(shape)
@@ -195,15 +195,15 @@ class ByteParser:
             x = x.T
         return x
 
-    def _read_image(self, im, w, h, rot=0, yuv=False):
-        im = np.array(Image.frombytes('L', (w, h), im))
+    def _read_image(self, im: memoryview, w, h, rot=0, yuv=False) -> np.ndarray:
+        im = np.array(Image.frombytes('L', (w, h), bytes(im)))
         if yuv:
             im = cv2.cvtColor(im[:,:-8], cv2.COLOR_YUV2RGB_NV12)
         if rot:
             im = np.rot90(im, rot)
         return im
 
-    def _read_json(self, x):
+    def _read_json(self, x: memoryview):
         return orjson.loads(x.decode('ascii'))
 
     def pop(self, dtype, shape=None, size=None, read=True, **kw):
@@ -212,7 +212,7 @@ class ByteParser:
             x = self._read_np(x, dtype, shape, **kw)
         return x
 
-    def pop_image(self, w, h, stride, read=True, **kw):
+    def pop_image(self, w: int, h: int, stride: int, read=True, **kw):
         x = self._pop_bytes(w * h * stride)
         if read:
             x = self._read_image(x, w, h, **kw)
@@ -224,9 +224,9 @@ class ByteParser:
             x = self._read_json(x)
         return x
 
-    def unpack(self, format):
+    def unpack(self, format) -> tuple:
         data = self._pop_bytes(struct.calcsize(format))
-        return struct.unpack('<iiq', data)
+        return struct.unpack(format, data)
 
     def reset(self):
         self.offset = 0
