@@ -1,5 +1,8 @@
 '''Various tools for faking hololens data.
 
+
+WARNING: this doesn't upload video in the right format. 
+
 '''
 import io
 import asyncio
