@@ -204,7 +204,7 @@ class ByteParser:
         return im
 
     def _read_json(self, x: memoryview):
-        return orjson.loads(x.decode('ascii'))
+        return orjson.loads(str(x, 'ascii'))
 
     def pop(self, dtype, shape=None, size=None, read=True, **kw):
         x = self._pop_bytes(size or np_size(dtype, shape))

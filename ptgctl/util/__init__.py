@@ -102,3 +102,13 @@ async def async_first_done(*unfinished):
         for task in unfinished:
             task.cancel()
         await asyncio.wait(unfinished)
+
+
+
+def pretty_bytes(b, scale=1000, names=['b', 'kb', 'mb', 'gb', 'tb']):
+    return next((
+            f'{b / (scale**i):.1f}{n}' 
+            for i, n in enumerate(names) 
+            if b / (scale**(i+1)) < 1
+        ), 
+        f'{b / (scale**(len(names)-1))}{names[-1]}')
