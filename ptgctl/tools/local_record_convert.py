@@ -70,7 +70,6 @@ def convert_video(rec_path, sid, key='image'):
     for ts, d in data_iter:
         im = d[key]
         if np.issubdtype(im.dtype, np.integer) and not np.issubdtype(im.dtype, np.uint8):
-            print(np.iinfo(im.dtype).max, im.max())
             im = (im / np.iinfo(im.dtype).max * 255).astype(np.uint8)
         if im.ndim == 2:
             im = np.stack([im] * 3, axis=-1)
