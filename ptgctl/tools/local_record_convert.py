@@ -44,7 +44,7 @@ def _iter_zip_data(rec_id, sid):
         for ts, data in _unzip(f)
     )
 
-def convert_video(rec_path, sid, key='image', coerce=False):
+def convert_video(rec_path, sid, key='image'):
     import cv2
     import numpy as np
     vid_fname = os.path.join('output', rec_path, f'{sid}.mp4')
@@ -71,7 +71,7 @@ def convert_video(rec_path, sid, key='image', coerce=False):
         im = d[key]
         if np.issubdtype(im.dtype, np.integer) and not np.issubdtype(im.dtype, np.uint8):
             print(np.iinfo(im.dtype).max, im.max())
-            im = (im / max(np.iinfo(im.dtype).max, im.max()) * 255).astype(np.uint8)
+            im = (im / np.iinfo(im.dtype).max * 255).astype(np.uint8)
         if im.ndim == 2:
             im = np.stack([im] * 3, axis=-1)
         else:

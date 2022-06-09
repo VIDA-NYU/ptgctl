@@ -92,7 +92,6 @@ header2_dtype = np.dtype([
     ('stride', np.uint32),
     ('info_size', np.uint32),
 ])
-depth_dtype = np.dtype(np.uint16).newbyteorder('>')
 
 
 def load(data, metadata=False, only_header=False):
@@ -145,7 +144,7 @@ def load(data, metadata=False, only_header=False):
 
     # depth
     if ftype in {SensorType.DepthLT, SensorType.DepthAHAT}:
-        d['image'] = parse.pop(depth_dtype, (h, w), read=read)
+        d['image'] = parse.pop(np.uint16, (h, w), read=read)
         if info_size >= im_size:
             info_size -= im_size
             d['infrared'] = parse.pop(np.uint16, (h, w), read=read)
