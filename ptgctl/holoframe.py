@@ -109,7 +109,11 @@ def load(data, metadata=False, only_header=False):
     if ftype in {34}: 
         if only_header:
             return d
-        d.update(parse.reset().pop_json())
+        vals = parse.reset().pop_json()
+        for k in ['left', 'right']:
+            if k in vals and isinstance(vals[k], str):
+                vals[k] = orjson.loads(vals[k])
+        d.update(vals)
         return d
     # microphone
     if ftype == 172:
