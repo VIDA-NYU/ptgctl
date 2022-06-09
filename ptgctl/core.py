@@ -144,8 +144,8 @@ class API:
             '''
             return self._get('streams', id, params={'report_error': report_error}).json()
 
-        def new(self, id: str, desc: str=None, *, override: bool=None, max_len: int=None, **meta):
-            '''Create a stream.
+        def update(self, id: str, **meta):
+            '''Update a stream's metadata.
             
             Arguments:
                 id (str): The stream ID.
@@ -153,12 +153,7 @@ class API:
                 override (bool): Whether to overwrite an existing stream. Otherwise it will throw an error.
                 **meta: Any arbitrary metadata to attach to the stream.
             '''
-            return self._put('streams', id, params={
-                'desc': desc,
-                'override': override,
-                'meta': json.dumps(meta),
-                'max_len': max_len,
-            }).json()
+            return self._put('streams', id, json=meta).json()
 
         def delete(self, id: str) -> bool:
             '''Delete a stream.
