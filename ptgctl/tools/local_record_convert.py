@@ -3,17 +3,16 @@
 
 '''
 import os
-import io
 import glob
-import time
-import asyncio
-from .. import util
+import json
 import tqdm
-
-# __bind__ = ['store']
+import zipfile
+import cv2
+import numpy as np
 
 import ptgctl
 from ptgctl import holoframe
+from ptgctl import util
 ptgctl.log.setLevel('WARNING')
 
 
@@ -22,7 +21,6 @@ def tqprint(*a, **kw):
 
 
 def _unzip(fname):
-    import zipfile
     with open(fname, 'rb') as f:
         with zipfile.ZipFile(f, 'r', zipfile.ZIP_STORED, False) as zf:
             for ts in tqdm.tqdm(sorted(zf.namelist()), desc=fname):
@@ -45,8 +43,6 @@ def _iter_zip_data(rec_id, sid):
     )
 
 def convert_video(rec_path, sid, key='image'):
-    import cv2
-    import numpy as np
     vid_fname = os.path.join('output', rec_path, f'{sid}.mp4')
     os.makedirs(os.path.dirname(vid_fname), exist_ok=True)
     
@@ -79,7 +75,6 @@ def convert_video(rec_path, sid, key='image'):
     writer.release()
 
 def convert_json(rec_path, sid):
-    import json
     all_data = []
     for ts, d in _iter_zip_data(rec_path, sid):
         all_data.append({
@@ -94,7 +89,6 @@ def convert_json(rec_path, sid):
 
 
 def convert_audio(rec_path, sid, sr=None):
-    import numpy as np
     import soundfile
     
     fname = os.path.join('output', rec_path, f'{sid}.wav')

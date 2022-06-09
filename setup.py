@@ -4,7 +4,7 @@ NAME = 'ptgctl'
 
 deps = {
     'image': ['Pillow', 'opencv-python', 'numpy'],
-    'audio': ['sounddevice'],
+    'audio': ['sounddevice', 'soundfile'],
 }
 
 import os, imp
