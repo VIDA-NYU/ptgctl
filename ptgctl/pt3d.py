@@ -58,7 +58,7 @@ class Points3D:
         xy_world, xy_pv, dists = transform_points2world_via_closest_depth(xy, self.xyz_depth_pv, self.xyz_depth_world)
         return xy_world, dists
 
-    def transform_box(self, xyxy):
+    def transform_box(self, xyxy, return_corners=True):
         '''Transform points from 2d image space to 3d world space.
         
         Arguments:
@@ -74,6 +74,8 @@ class Points3D:
         xyc = (xy2 + xy1) / 2
         xyzc_world, xyz_pv, dists = transform_points2world_via_closest_depth(
             xyc, self.xyz_depth_pv, self.xyz_depth_world)
+        if not return_corners:
+            return xyzc_world, dists
         xyz_tl_world = transform_image2world(xy1, xyz_pv[:, 2], self.pv2world)
         xyz_br_world = transform_image2world(xy2, xyz_pv[:, 2], self.pv2world)
         xyz_tr_world = transform_image2world(np.concatenate([xy2[:, 0][:,None], xy1[:, 1][:,None]], axis=1), xyz_pv[:, 2], self.pv2world)
