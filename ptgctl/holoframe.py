@@ -6,7 +6,7 @@ This is here for convenience but won't be necessary for too much longer
 # from collections import namedtuple
 import struct
 from collections import defaultdict
-import orjson
+import json
 import numpy as np
 from PIL import Image
 import cv2
@@ -111,7 +111,7 @@ def load(data, metadata=False, only_header=False):
         vals = parse.reset().pop_json()
         for k in ['left', 'right']:
             if k in vals and isinstance(vals[k], str):
-                vals[k] = orjson.loads(vals[k])
+                vals[k] = json.loads(vals[k])
         d.update(vals)
         return d
     # microphone
@@ -207,7 +207,7 @@ class ByteParser:
         return im
 
     def _read_json(self, x: memoryview):
-        return orjson.loads(str(x, 'ascii'))
+        return json.loads(str(x, 'ascii'))
 
     def pop(self, dtype, shape=None, size=None, read=True, **kw):
         x = self._pop_bytes(size or np_size(dtype, shape))
