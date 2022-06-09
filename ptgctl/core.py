@@ -172,7 +172,7 @@ class API:
             '''Get all recordings'''
             return self._get('recordings', params={'info': info}).json()
 
-        def get(self, id: str, report_error: bool=None) -> dict:
+        def get(self, id: str) -> dict:
             '''Get a recording.
             
             Arguments:
@@ -202,13 +202,13 @@ class API:
             '''
             return self._put('recordings', id, 'stop').json()
 
-        def delete(self, id: str) -> bool:
-            '''Delete a stream.
+        # def delete(self, id: str) -> bool:
+        #     '''Delete a stream.
             
-            Arguments:
-                id (str): The stream ID.
-            '''
-            return self._delete('streams', id).json()
+        #     Arguments:
+        #         id (str): The stream ID.
+        #     '''
+        #     return self._delete('recordings', id).json()
 
     # recipes
 
@@ -403,10 +403,10 @@ class API:
         from .tools import test
         return test
 
-    @util.bound_module
-    def local_record(self) -> util.BoundModule:  # lazy import and bind
-        from .tools import record
-        return record
+    # @util.bound_module
+    # def local_record(self) -> util.BoundModule:  # lazy import and bind
+    #     from .tools import local_record
+    #     return local_record
 
 
 
