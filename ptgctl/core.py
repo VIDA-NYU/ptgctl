@@ -129,12 +129,12 @@ class API:
             '''Get all streams'''
             return self._get('streams/', params={'info': info}).json()
 
-        # def ls2(self) -> dict:
-        #     '''Get all streams'''
-        #     return {
-        #         s: self.get(s)
-        #         for s in self.ls()
-        #     }
+        def ls2(self) -> dict:
+            '''Get all streams'''
+            return {
+                s: self.get(s)
+                for s in self.ls()
+            }
 
         def get(self, id: str, report_error: bool=None) -> dict:
             '''Get a stream.

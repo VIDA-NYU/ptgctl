@@ -82,10 +82,15 @@ def yamltable(d, *a, indent=0, width=2, depth=-1, _keys=(), **kw):
                 for k in d)
 
         if isinstance(d, list):
-            if all(di is None or isinstance(di, dict) for di in d):
-                d = astable(d, *a, **kw)
-            else:
-                d = '\n'.join([' - {}'.format(di) for di in d])
+            # if all(di is None or isinstance(di, dict) for di in d):
+            #     d = astable(d, *a, **kw)
+            # else:
+            d = '\n'.join([
+                '{}- {}'.format(' '*(width-2), yamltable(
+                    di, *a, indent=indent+1,
+                    width=width, depth=depth-1,
+                    _keys=_keys + (i,), **kw
+                ).strip()) for i, di in enumerate(d)])
 
     d = str(d)
     if indent and len(d.splitlines()) > 1:
