@@ -9,3 +9,4 @@ RUN pip install --no-cache-dir -U pip && \
 ADD ptgctl/ $DIR/ptgctl/
 
 WORKDIR /src/app
+ENTRYPOINT ["python3"]
