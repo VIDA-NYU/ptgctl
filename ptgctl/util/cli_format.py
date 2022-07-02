@@ -4,6 +4,7 @@
 
 import fnmatch
 import functools
+import numpy as np
 
 # adds
 
@@ -91,6 +92,10 @@ def yamltable(d, *a, indent=0, width=2, depth=-1, _keys=(), **kw):
                     width=width, depth=depth-1,
                     _keys=_keys + (i,), **kw
                 ).strip()) for i, di in enumerate(d)])
+
+    if isinstance(d, np.ndarray):
+        if d.size > 20 or d.ndim > 2:
+            d = f'{d.shape} {d.dtype}'
 
     d = str(d)
     if indent and len(d.splitlines()) > 1:

@@ -63,9 +63,7 @@ def async2sync(func):
     '''Wraps an async function with a synchronous call.'''
     @functools.wraps(func)
     def sync(*a, **kw):
-        task = func(*a, **kw)
-        return asyncio.run(task)
-        # return async_run_safe(task)
+        return asyncio.run(func(*a, **kw))
     sync.asyncio = func
     return sync
 
