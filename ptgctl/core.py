@@ -173,6 +173,10 @@ class API:
             '''Get all recordings'''
             return self._get('recordings', params={'info': info}).json()
 
+        def current(self, info: bool=None) -> list:
+            '''Get the current recording'''
+            return self._get('recordings/current', params={'info': info}).json()
+
         def get(self, id: str) -> dict:
             '''Get a recording.
             

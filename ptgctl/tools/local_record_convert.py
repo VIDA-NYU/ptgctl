@@ -1,4 +1,5 @@
-'''Record data from the API to file. PARTIALLY DEVELOPED / UNTESTED
+
+'''Record data from the API to file.
 
 
 '''
@@ -19,6 +20,8 @@ ptgctl.log.setLevel('WARNING')
 def tqprint(*a, **kw):
     tqdm.tqdm.write(' '.join(map(str, a)), **kw)
 
+IN_PATH =  '.'
+OUT_PATH = 'output'
 
 def _unzip(fname):
     with open(fname, 'rb') as f:
@@ -35,74 +38,123 @@ def _peek(it, n=1):
     first = [x for i, x in zip(range(n), it)]
     return first, (x for xs in (first, it) for x in xs)
 
-def _iter_zip_data(rec_id, sid):
+def _iter_zip_data(rec_id, sid, in_path=IN_PATH):
+    print(os.path.join(in_path, rec_id, sid, '*'))
     yield from (
         (ts, holoframe.load(data))
-        for f in tqdm.tqdm(sorted(glob.glob(os.path.join(rec_id, sid, '*'))), desc=f'{rec_id}/{sid}')
+        for f in tqdm.tqdm(sorted(glob.glob(
+            os.path.join(in_path, rec_id, sid, '*')
+        )), desc=f'{rec_id}/{sid}')
         for ts, data in _unzip(f)
     )
 
-def convert_video(rec_path, sid, key='image'):
-    vid_fname = os.path.join('output', rec_path, f'{sid}.mp4')
+# https://github.com/gradio-app/gradio/issues/1508#issuecomment-1154545730
+def convert_video(rec_id, sid, key='image', fps=24, in_path=IN_PATH, out_path=OUT_PATH, start_time=None, overwrite=False):
+    vid_fname = os.path.join(out_path, rec_id, f'{sid}.mp4')
     os.makedirs(os.path.dirname(vid_fname), exist_ok=True)
+    if not overwrite and os.path.isfile(vid_fname):
+        return vid_fname
     
-    data_iter = _iter_zip_data(rec_path, sid)
-    first, data_iter = _peek(data_iter, n=10)
+    data_iter = (
+        (util.parse_epoch_time(t), _process_frame(d[key])) for t, d in 
+        _iter_zip_data(rec_id, sid, in_path=in_path)
+    )
+    first, data_iter = _peek(data_iter, n=1)
+    size = next((x.shape[:2] for t, x in first), (640,480))
+    start_time = util.parse_epoch_time(start_time) if start_time else next((t for t, x in first), 0)
+    data_iter = ((t - start_time, x) for t, x in data_iter)
 
-    size = next((x[key].shape[:2] for t, x in first), (640,480))
-    dts = [
-        util.parse_epoch_time(t1) - util.parse_epoch_time(t0)
-        for (t0, _), (t1, _) in zip(first, first[1:])
-    ]
-    fpss = [1/dt for dt in dts if dt < 1]
-    fps = max(fpss, default=30)
-    if fps < 1:
-        raise ValueError(f"Bad fps: {dts}")
-    
-    # cv2.VideoWriter_fourcc(*"MJPG")
-    cc = cv2.VideoWriter_fourcc(*'mp4v')
-    # cc = cv2.VideoWriter_fourcc(*'I420')
-    writer = cv2.VideoWriter(vid_fname, cc, fps, size[::-1], True)
-    for ts, d in data_iter:
-        im = d[key]
-        if np.issubdtype(im.dtype, np.integer) and not np.issubdtype(im.dtype, np.uint8):
-            im = (im / np.iinfo(im.dtype).max * 255).astype(np.uint8)
-        if im.ndim == 2:
-            im = np.stack([im] * 3, axis=-1)
-        else:
-            im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
-        writer.write(im)
-    writer.release()
+    #cc = 'avc1' #'mp4v' # 'I420' # "MJPG"
+    #writer = cv2.VideoWriter(
+    #    vid_fname, cv2.VideoWriter_fourcc(*cc), 
+    #    fps, size[::-1], True)
+    #try:
+    #    t = 0
+    #    ts, prev_im = next(data_iter)
+    #    for ts, im in data_iter:
+    #        while t < ts:
+    #            writer.write(prev_im)
+    #            t += 1.0 / fps
+    #        prev_im = im
+    #    writer.write(prev_im)
+    #except StopIteration:
+    #    print("Empty video")
+    #finally:
+    #    writer.release()
+    try:
+        ts, prev_im = next(data_iter)
+        with video_writer(vid_fname, *size[::-1], fps) as writer:
+            t = 0
+            for ts, im in data_iter:
+                while t < ts:
+                    writer.write(prev_im.tobytes())
+                    t += 1.0 / fps
+                prev_im = im
+            writer.write(prev_im.tobytes())
+    except StopIteration:
+        print("Empty video")
+    return vid_fname
 
-def convert_json(rec_path, sid):
+
+import contextlib
+# src: https://stackoverflow.com/questions/61260182/how-to-output-x265-compressed-video-with-cv2-videowriter
+@contextlib.contextmanager
+def video_writer(fname, width, height, fps, vcodec='libx264'):
+    import subprocess, shlex
+    try:
+        process = subprocess.Popen(shlex.split(
+            f'ffmpeg -y -s {width}x{height} -pixel_format bgr24 -f rawvideo -r {fps} '
+            f'-i pipe: -vcodec {vcodec} -pix_fmt yuv420p -crf 24 {fname}'
+        ), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        yield process.stdin
+    finally:
+        pass
+
+
+def _process_frame(im):
+    if np.issubdtype(im.dtype, np.integer) and not np.issubdtype(im.dtype, np.uint8):
+        im = (im / np.iinfo(im.dtype).max * 255).astype(np.uint8)
+    if im.ndim == 2:
+        im = np.stack([im] * 3, axis=-1)
+    else:
+        im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    return im
+
+
+def convert_json(rec_id, sid, in_path=IN_PATH, out_path=OUT_PATH, overwrite=False):
+    fname = os.path.join(out_path, rec_id, f'{sid}.json')
+    os.makedirs(os.path.dirname(fname), exist_ok=True)
+    if not overwrite and os.path.isfile(fname):
+        return fname
+
     all_data = []
-    for ts, d in _iter_zip_data(rec_path, sid):
+    for ts, d in _iter_zip_data(rec_id, sid, in_path=in_path):
         all_data.append({
             'timestamp': ts,
             **d,
         })
 
-    fname = os.path.join('output', rec_path, f'{sid}.json')
-    os.makedirs(os.path.dirname(fname), exist_ok=True)
     with open(fname, 'w') as f:
         json.dump(all_data, f)
+    return fname
 
 
-def convert_audio(rec_path, sid, sr=None):
-    import soundfile
-    
-    fname = os.path.join('output', rec_path, f'{sid}.wav')
+def convert_audio(rec_id, sid, sr=None, in_path=IN_PATH, out_path=OUT_PATH, overwrite=False):
+    fname = os.path.join(out_path, rec_id, f'{sid}.wav')
     os.makedirs(os.path.dirname(fname), exist_ok=True)
+    os.makedirs(os.path.dirname(fname), exist_ok=True)
+    if not overwrite and os.path.isfile(fname):
+        return fname
 
-    data_iter = _iter_zip_data(rec_path, sid)
+    data_iter = _iter_zip_data(rec_id, sid, in_path=in_path)
     first, data_iter = _peek(data_iter, n=10)
     sr = sr or next((d['sr'] for ts, d in first), 44100)
     channels = next((x.shape[1] if x.ndim > 1 else 1 for x in (d['audio'] for ts, d in first)), 1)
 
-    all_data = []
     first = 0
     lastpos = None
 
+    import soundfile
     with soundfile.SoundFile(fname, 'w', samplerate=sr, channels=channels) as sf:
         for ts, d in data_iter:
             sr = sr or d['sr']
@@ -114,29 +166,32 @@ def convert_audio(rec_path, sid, sr=None):
                     sf.write(np.zeros((n_gap, channels)))
             sf.write(y)
             lastpos = pos + len(y)
+    return fname
 
 
 
-def convert(rec_path, *sids):
-    rec_path = str(rec_path)
+def convert(rec_id, *sids, in_path=IN_PATH, **kw):
+    rec_path = os.path.join(in_path, rec_id)
+    in_path = os.path.dirname(rec_path)
+    rec_id = os.path.basename(rec_path)
     # rec_id = os.path.basename(rec_path)
     sids = sids or [os.path.basename(d) for d in glob.glob(os.path.join(rec_path, '*'))]
     for sid in sids:
         print(sid)
         if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
-            convert_video(rec_path, sid)
+            convert_video(rec_id, sid, in_path=in_path, **kw)
         elif sid in {'hand', 'eye'}:
-            convert_json(rec_path, sid)
+            convert_json(rec_id, sid, in_path=in_path, **kw)
         elif sid in {'mic0'}:
-            convert_audio(rec_path, sid)
+            convert_audio(rec_id, sid, in_path=in_path, **kw)
 
 
 
-def convert_many(*fs, sids=None, path='.'):
+def convert_many(*fs, sids=None, path='.', **kw):
     fs = fs or glob.glob(os.path.join(path, '*'))
     for f in fs:
         print(f)
-        convert(f, *sids or ())
+        convert(f, *sids or (), **kw)
 
 if __name__ == '__main__':
     import fire
