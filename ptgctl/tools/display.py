@@ -73,6 +73,16 @@ def local_video(api=None, src=0, pos=0, width=0.3, fps=40):
 
 
 
+@util.async2sync
+async def json(api, stream_id, **kw):
+    from ptgctl import holoframe
+    from ptgctl.util import cli_format
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                cli_format.yamltable([sid, ts, data])
+
+
 def test(api, stream_id=None, **kw):
     if not stream_id:
         import json
