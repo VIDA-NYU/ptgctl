@@ -3,6 +3,7 @@
 
 
 '''
+from __future__ import annotations
 import os
 import glob
 import json
@@ -176,6 +177,8 @@ def convert(rec_id, *sids, in_path=IN_PATH, **kw):
     rec_id = os.path.basename(rec_path)
     # rec_id = os.path.basename(rec_path)
     sids = sids or [os.path.basename(d) for d in glob.glob(os.path.join(rec_path, '*'))]
+    print('recording path:', rec_path, rec_id)
+    print('sids:', sids)
     for sid in sids:
         print(sid)
         if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
