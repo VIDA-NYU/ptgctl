@@ -25,7 +25,7 @@ class Token(dict):
 
         expires = self.get('exp')
         self.expires = datetime.datetime.fromtimestamp(expires) if expires else None
-        self.min_time_left = datetime.timedelta(seconds=self.min_time_left)
+        self._min_time_left = datetime.timedelta(seconds=self.min_time_left)
 
     def __repr__(self):
         '''Show the token information, including expiration and data payload.'''
@@ -39,12 +39,22 @@ class Token(dict):
 
     def __bool__(self):
         '''Check if the token exists and is not expired.'''
-        return bool(self.token) and self.time_left > self.min_time_left
+        return bool(self.token) and self.time_left > self._min_time_left
 
     @property
     def time_left(self) -> datetime.timedelta:
         '''Gets the amount of time left, as a datetime.timedelta object.'''
         return self.expires - datetime.datetime.now() if self.expires else datetime.timedelta(seconds=0)
+
+    @classmethod
+    def from_cookiejar(cls, jar, name):
+        for domain, paths in jar._cookies.items():
+            for path, cookies in paths.items():
+                if name in cookies:
+                    token = cookies[name].value.strip('"')
+                    if token and token.startswith('Bearer '):
+                        token = token.split(' ', 1)[-1]
+                    return cls(token)
 
 
 
