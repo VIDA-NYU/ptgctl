@@ -103,11 +103,17 @@ import contextlib
 def video_writer(fname, width, height, fps, vcodec='libx264'):
     import subprocess, shlex
     try:
-        process = subprocess.Popen(shlex.split(
+        cmd = (
             f'ffmpeg -y -s {width}x{height} -pixel_format bgr24 -f rawvideo -r {fps} '
             f'-i pipe: -vcodec {vcodec} -pix_fmt yuv420p -crf 24 {fname}'
-        ), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        )
+        print(cmd)
+        process = subprocess.Popen(shlex.split(cmd), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         yield process.stdin
+    except BrokenPipeError as e:
+        print(f"Broken pipe writing video: {e}")
+        print(process.stderr.read())
+        raise e
     finally:
         pass
 
@@ -180,13 +186,17 @@ def convert(rec_id, *sids, in_path=IN_PATH, **kw):
     print('recording path:', rec_path, rec_id)
     print('sids:', sids)
     for sid in sids:
-        print(sid)
-        if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
-            convert_video(rec_id, sid, in_path=in_path, **kw)
-        elif sid in {'hand', 'eye'}:
-            convert_json(rec_id, sid, in_path=in_path, **kw)
-        elif sid in {'mic0'}:
-            convert_audio(rec_id, sid, in_path=in_path, **kw)
+        try:
+            print(sid)
+            if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
+                convert_video(rec_id, sid, in_path=in_path, **kw)
+            elif sid in {'hand', 'eye'}:
+                convert_json(rec_id, sid, in_path=in_path, **kw)
+            elif sid in {'mic0'}:
+                convert_audio(rec_id, sid, in_path=in_path, **kw)
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
 
 
