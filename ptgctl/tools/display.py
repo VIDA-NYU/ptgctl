@@ -13,41 +13,50 @@ log = util.getLogger(__name__, 'debug')
 
 
 @util.async2sync
+@util.interruptable
 async def imshow(api, stream_id, delay=1, **kw):
     '''Show a video stream from the API.'''
     import cv2
-    from .. import holoframe
-    async with api.data_pull_connect(stream_id, **kw) as ws:
+    # from .. import holoframe
+    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, **kw) as ws:
         t0 = time.time()
         i = 0
+        last_epoch = time.time()
         while True:
-            for sid, ts, data in await ws.recv_data():
+            entries = await ws.recv_data()
+            t_now = time.time()
+            inst_fps = len(entries) / (t_now - last_epoch)
+
+            for sid, ts, data in entries:
                 i += 1
-                im = holoframe.load(data)['image']
+                im = np.array(Image.open(io.BytesIO(data)))
+                # im = holoframe.load(data)['image']
                 im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
 
                 ts_frame = util.ts2datetime(ts)
                 latency = datetime.datetime.now() - ts_frame
-                text = f"{ts_frame.strftime('%c.%f')} [fps={i / (time.time() - t0):.1f}, {latency} latency]"
-                print(sid, len(data), ts, text)
+                text = f"{ts_frame.strftime('%c.%f')} [fps={inst_fps:.1f} avg fps={i / (time.time() - t0):.1f}, {latency} latency]"
+                # print(sid, len(data), ts, text)
                 # cv2.putText(im, text, (10, 30), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0,0,0))
                 cv2.putText(im, text, (10, 15), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
                 cv2.imshow(sid, im)
-            if cv2.waitKey(delay) & 0xFF == ord('q'):
+
+            last_epoch = t_now
+            if cv2.waitKey(delay + (not len(entries)) * 50) & 0xFF == ord('q'):
                 break
 
 
-def imshow1(api, stream_id, raw_holo=False, **kw):
+def imshow1(api, stream_id, **kw):#, raw_holo=False
     '''Show a single frame of a stream.'''
     import cv2
-    if raw_holo:
-        from .. import holoframe
-    for sid, ts, data in api.data(stream_id, **kw):
-        if raw_holo:
-            im = holoframe.load(data)['image']
-        else:
-            im = np.array(Image.open(io.BytesIO(data)))
-            im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    # if raw_holo:
+    #     from .. import holoframe
+    for sid, ts, data in api.data(stream_id, output='jpg', **kw):
+        # if raw_holo:
+        #     im = holoframe.load(data)['image']
+        # else:
+        im = np.array(Image.open(io.BytesIO(data)))
+        im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
         cv2.imshow(f'{sid}:{ts}', im)
     cv2.waitKey(0)
 
@@ -74,6 +83,7 @@ def local_video(api=None, src=0, pos=0, width=0.3, fps=40):
 
 
 @util.async2sync
+@util.interruptable
 async def json(api, stream_id, **kw):
     from ptgctl import holoframe
     from ptgctl.util import cli_format

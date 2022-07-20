@@ -56,6 +56,16 @@ def filternone(d: dict):
 
 
 
+def interruptable(func):
+    @functools.wraps(func)
+    def wrap(*a, **kw):
+        try:
+            return func(*a, **kw)
+        except KeyboardInterrupt:
+            print('\nInterrupted.')
+    return wrap
+
+
 # asyncio
 
 
