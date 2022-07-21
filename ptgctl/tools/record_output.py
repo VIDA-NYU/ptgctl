@@ -88,9 +88,9 @@ def _process_video_frame(im, scale=None, norm=False):
 
 
 def iter_stream(rec_id, sid, key=None, in_path='.', fps=None, start_time=None, relative_time=True, process=(lambda x:x), **kw):
-    key = key or sid2key[sid]
+    key = sid2key[sid] if key is True else key
     data_iter = (
-        (util.parse_epoch_time(t), process(d[key], **kw)) for t, d in 
+        (util.parse_epoch_time(t), process(d[key] if key else d, **kw)) for t, d in 
         iter_zip_data(rec_id, sid, in_path=in_path)
     )
 
@@ -106,7 +106,7 @@ def iter_stream(rec_id, sid, key=None, in_path='.', fps=None, start_time=None, r
 
     yield from _resample(data_iter, fps)
 
-def iter_video_stream(rec_id, sid, key='image', get_size=False, tobytes=True, **kw):
+def iter_video_stream(rec_id, sid, key='image', get_size=False, **kw):
     it = iter_stream(rec_id, sid, key=key, process=_process_video_frame, **kw)
     
     if get_size:
@@ -115,11 +115,8 @@ def iter_video_stream(rec_id, sid, key='image', get_size=False, tobytes=True, **
         print(f'{h}x{w}')
         return
 
-    if not tobytes:
-        yield from it
-        return
-    for ts, im in it:
-        yield ts, im.tobytes()
+    yield from it
+    
 
 
 sid2key = {
@@ -128,18 +125,11 @@ sid2key = {
     **{k: 'audio' for k in ('mic0')},
 }
 
-def tostdout(kind, rec_id, sid, progress=False, **kw):
-    it = (
-        istream_video(rec_id, sid, **kw) if kind == 'video' else
-        istream(rec_id, sid, **kw))
-
-    for t, d in tqdm.tqdm(it) if progress else it:
-        os.write(1, d)
-
 
 def output(kind, rec_id, sid, progress=False, out_dir=None, **kw):
     it = (
-        istream_video(rec_id, sid, **kw) if kind == 'video' else
+        istream_video(rec_id, sid, **kw) 
+        if kind == 'video' else
         istream(rec_id, sid, **kw))
     it = tqdm.tqdm(it) if progress else it
 
@@ -148,8 +138,9 @@ def output(kind, rec_id, sid, progress=False, out_dir=None, **kw):
         for t, d in enumerate(it):
             1/0
     else:
+        # write bytes to stdout
         for t, d in it:
-            os.write(1, d)
+            os.write(1, d.tobytes())
 
 
 istream = iter_stream
