@@ -101,7 +101,7 @@ class API:
 
     def _do(self, method: str, *url_parts, headers: dict|None=None, params: dict|None=None, raises: bool=True, **kw) -> requests.Response:
         '''Generic request wrapper.'''
-        url = os.path.join(self.url, *map(str, (u for u in url_parts if u is not None)))
+        url = '/'.join((self.url, *(str(u) for u in url_parts if u is not None)))
         # headers = self._headers(headers)
         if params:
             kw['params'] = {k: v for k, v in params.items() if k and v is not None}
@@ -221,15 +221,17 @@ class API:
         #     '''
         #     return self._delete('recordings', id).json()
 
-        def static(self, *fs, display=False):
+        def static(self, *fs, out_dir='.', display=False):
+            if not any(fs):
+                raise ValueError('You must provide a link to a static file')
             r = self._get('recordings/static', *fs)
             if display:
                 print(r.content)
                 return
 
-            fname = '-'.join(map(str, fs))
-            with open(fname, 'wb') as f:
-                f.write(r.content)
+            fname = os.path.join(out_dir, '-'.join(map(str, fs)))
+            download_file(r, fname)
+            print('wrote to', fname)
                 
 
     # recipes
@@ -449,6 +451,15 @@ class API:
     #     return local_record
 
 
+UNIT=1024**2
+def download_file(r, fname=None, block_size=1024):
+    import tqdm
+    total_size= int(r.headers.get('content-length', 0)) / UNIT
+    with tqdm.tqdm(total=total_size, desc=f'writing to {fname}', unit='mb', unit_scale=True, leave=False) as pbar:
+        with open(fname, 'wb') as f:
+            for data in r.iter_content(block_size):
+                pbar.update(len(data)/UNIT)
+                f.write(data)
 
 
 class WebsocketStream:
