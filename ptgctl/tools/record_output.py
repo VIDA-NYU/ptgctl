@@ -87,20 +87,27 @@ def _process_video_frame(im, scale=None, norm=False):
 
 
 
-def istream(rec_id, sid, key=None, in_path='.', fps=None, start_time=None, rel_time=True, process=(lambda x:x), **kw):
+def iter_stream(rec_id, sid, key=None, in_path='.', fps=None, start_time=None, relative_time=True, process=(lambda x:x), **kw):
     key = key or sid2key[sid]
     data_iter = (
         (util.parse_epoch_time(t), process(d[key], **kw)) for t, d in 
         iter_zip_data(rec_id, sid, in_path=in_path)
     )
-    if rel_time:
+
+    # optionally make the timestamps relative to the start time
+    if start_time:
+        if isinstance(start_time, str):
+            start_time = util.parse_epoch_time(start_time)
+    elif relative_time:
         first, data_iter = _peek(data_iter, n=1)
-        start_time = util.parse_epoch_time(start_time) if start_time else next((t for t, x in first), 0)
+        start_time = next((t for t, x in first), 0)
+    if start_time:
         data_iter = ((t - start_time, x) for t, x in data_iter)
+
     yield from _resample(data_iter, fps)
 
-def istream_video(rec_id, sid, key='image', get_size=False, tobytes=True, **kw):
-    it = istream(rec_id, sid, key=key, process=_process_video_frame, **kw)
+def iter_video_stream(rec_id, sid, key='image', get_size=False, tobytes=True, **kw):
+    it = iter_stream(rec_id, sid, key=key, process=_process_video_frame, **kw)
     
     if get_size:
         first, it = _peek(it, n=1)
@@ -144,6 +151,9 @@ def output(kind, rec_id, sid, progress=False, out_dir=None, **kw):
         for t, d in it:
             os.write(1, d)
 
+
+istream = iter_stream
+istream_video = iter_video_stream
 
 if __name__ == '__main__':
     import fire

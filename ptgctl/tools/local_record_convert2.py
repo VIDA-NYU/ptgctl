@@ -35,7 +35,7 @@ def convert_video(rec_id, sid, key='image', fps=24, in_path=IN_PATH, out_path=OU
     if not overwrite and os.path.isfile(vid_fname):
         return vid_fname
 
-    data_iter = record_output.istream_video(rec_id, sid, key, fps=fps, in_path=in_path, tobytes=False, **kw)
+    data_iter = record_output.iter_video_stream(rec_id, sid, key, fps=fps, in_path=in_path, tobytes=False, **kw)
     first, data_iter = _peek(data_iter, n=1)
     size = next((x.shape[:2] for t, x in first), (760, 4280))
 
