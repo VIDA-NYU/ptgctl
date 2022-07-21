@@ -200,13 +200,13 @@ class API:
             '''
             return self._get('recordings', id).json()
 
-        def start(self, id: str|None=None):
+        def start(self, *id):
             '''Start a recording.
             
             Arguments:
                 id (str): The recording ID.
             '''
-            return self._put('recordings/start', params={'rec_id': id or None}).json()
+            return self._put('recordings/start', params={'rec_id': '-'.join(id).replace(' ', '-') or None}).json()
 
         def stop(self):
             '''Stop a recording.
