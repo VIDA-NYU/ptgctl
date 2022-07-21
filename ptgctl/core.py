@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import sys
 import json
@@ -5,6 +6,7 @@ import time
 import asyncio
 from typing import List
 import requests
+from http.cookiejar import LWPCookieJar
 from urllib.parse import urlencode
 from . import util
 from .util import color
@@ -22,9 +24,10 @@ class API:
     This let's you operate PTG from Python or CLI.
     '''
     _TOKEN_CACHE = '~/.ptg'
+    _COOKIE_FILE = '~/.ptg.cjar'
     _token = None
 
-    def __init__(self, url: str=None, token=None, username: str=None, password: str=None, local: bool=False):
+    def __init__(self, url: str|None=None, token=None, username: str|None=None, password: str|None=None, local: bool=False):
         url = url or (LOCAL_URL if local else URL)
         # get url and make sure that it has a protocol on it.
         self.url = url = url.rstrip('/')
@@ -35,16 +38,23 @@ class API:
         self._wsurl = f"ws{'s' if secure else ''}://{uri}"
 
         self.sess = requests.Session()
+        cookies = LWPCookieJar(os.path.expanduser(self._COOKIE_FILE))
+        self.sess.cookies: LWPCookieJar = cookies  # type: ignore
+        try:
+            cookies.load()
+        except Exception:
+            pass
+        self.token = util.Token.from_cookiejar(self.sess.cookies, 'authorization')
 
         # check token login
-        self._TOKEN_CACHE = token_cache = os.path.expanduser(self._TOKEN_CACHE) if self._TOKEN_CACHE else None
+        # self._TOKEN_CACHE = token_cache = os.path.expanduser(self._TOKEN_CACHE) if self._TOKEN_CACHE else None
         if token:
             self.token = token
         elif username or password:
             self.login(username, password)
-        elif token_cache and os.path.isfile(token_cache):
-            with open(token_cache, 'r') as f:
-                self.token = f.read().strip()
+        # elif token_cache and os.path.isfile(token_cache):
+        #     with open(token_cache, 'r') as f:
+        #         self.token = f.read().strip()
         # elif TOKEN:
         #     self.token = util.Token(TOKEN)
         # elif ask_login:
@@ -53,7 +63,7 @@ class API:
         #     raise ValueError("Could not log in.")
 
     @property
-    def token(self) -> util.Token:
+    def token(self) -> util.Token | None:
         '''The user JWT token used for making authenticated requests.'''
         return self._token
 
@@ -68,27 +78,31 @@ class API:
         # get token
         log.info('login: %s %s', username, f'{self.url}/token')
         r = self.sess.post(url=f'{self.url}/token', data={'username': username, 'password': password})
-        # store token
-        self.token = r.json()['access_token']
-        if self._TOKEN_CACHE:
-            with open(self._TOKEN_CACHE, 'w') as f:
-                f.write(str(self.token))
+        # # store token
+        # self.token = r.json()['access_token']
+        # if self._TOKEN_CACHE:
+        #     with open(self._TOKEN_CACHE, 'w') as f:
+        #         f.write(str(self.token))
+        self.sess.cookies.save()
+        self.token = util.Token.from_cookiejar(self.sess.cookies, 'authorization')
 
     def logout(self):
         '''Logout and discard the token.'''
         self.token = None
-        if os.path.isfile(self._TOKEN_CACHE):
+        if self._TOKEN_CACHE and os.path.isfile(self._TOKEN_CACHE):
             os.remove(self._TOKEN_CACHE)
 
     # make a request
 
-    def _headers(self, headers: dict=None, **kw) -> dict:
-        return {'Authorization': f'Bearer {self.token}', **(headers or {}), **kw}
+    def _headers(self, headers: dict|None=None, **kw) -> dict:
+        return {
+            'Authorization': f'Bearer {self.token}' if self.token else None, 
+            **(headers or {}), **kw}
 
-    def _do(self, method: str, *url_parts, headers: dict=None, params: dict=None, raises: bool=True, **kw) -> requests.Response:
+    def _do(self, method: str, *url_parts, headers: dict|None=None, params: dict|None=None, raises: bool=True, **kw) -> requests.Response:
         '''Generic request wrapper.'''
         url = os.path.join(self.url, *map(str, (u for u in url_parts if u is not None)))
-        headers = self._headers(headers)
+        # headers = self._headers(headers)
         if params:
             kw['params'] = {k: v for k, v in params.items() if k and v is not None}
 
@@ -108,13 +122,14 @@ class API:
     def _post(self, *a, **kw) -> requests.Response: return self._do('POST', *a, **kw)
     def _delete(self, *a, **kw) -> requests.Response: return self._do('DELETE', *a, **kw)
 
-    def _ws(self, *url_parts, headers: dict=None, connect_kwargs: dict=None, **params):
+    def _ws(self, *url_parts, headers: dict|None=None, connect_kwargs: dict|None=None, **params):
         # import websockets
         params = urlencode(params) if params else None
+        headers = self._headers(headers)
         url = os.path.join(self._wsurl, *map(str, url_parts)) + (f'?{params}' if params else '')
         log.info('websocket connect: %s', url)
-        # return websockets.connect(url, extra_headers=self._headers(headers), **(connect_kwargs or {}))
-        return WebsocketStream(url, extra_headers=self._headers(headers), **(connect_kwargs or {}))
+        # return websockets.connect(url, extra_headers=headers, **(connect_kwargs or {}))
+        return WebsocketStream(url, extra_headers=headers, **(connect_kwargs or {}))
 
     def ping(self, error=False):
         if error:
@@ -126,7 +141,7 @@ class API:
 
     class streams(util.Nest):
         '''Data Stream metadata.'''
-        def ls(self, info: bool=None) -> list:
+        def ls(self, info: bool|None=None) -> list:
             '''Get all streams'''
             return self._get('streams/', params={'info': info}).json()
 
@@ -137,7 +152,7 @@ class API:
                 for s in self.ls()
             }
 
-        def get(self, id: str, report_error: bool=None) -> dict:
+        def get(self, id: str, report_error: bool|None=None) -> dict:
             '''Get a stream.
             
             Arguments:
@@ -169,11 +184,11 @@ class API:
 
     class recordings(util.Nest):
         '''Data Stream metadata.'''
-        def ls(self, info: bool=None) -> list:
+        def ls(self, info: bool|None=None) -> list:
             '''Get all recordings'''
             return self._get('recordings', params={'info': info}).json()
 
-        def current(self, info: bool=None) -> list:
+        def current(self, info: bool|None=None) -> list:
             '''Get the current recording'''
             return self._get('recordings/current', params={'info': info}).json()
 
@@ -185,25 +200,16 @@ class API:
             '''
             return self._get('recordings', id).json()
 
-        def start(self, id: str=None):
-            '''Create a stream.
+        def start(self, id: str|None=None):
+            '''Start a recording.
             
             Arguments:
-                id (str): The stream ID.
-                desc (str): The stream description.
-                override (bool): Whether to overwrite an existing stream. Otherwise it will throw an error.
-                **meta: Any arbitrary metadata to attach to the stream.
+                id (str): The recording ID.
             '''
             return self._put('recordings/start', params={'rec_id': id or None}).json()
 
-        def stop(self, id: str=None):
-            '''Create a stream.
-            
-            Arguments:
-                id (str): The stream ID.
-                desc (str): The stream description.
-                override (bool): Whether to overwrite an existing stream. Otherwise it will throw an error.
-                **meta: Any arbitrary metadata to attach to the stream.
+        def stop(self):
+            '''Stop a recording.
             '''
             return self._put('recordings/stop').json()
 
@@ -242,7 +248,7 @@ class API:
             '''
             return self._get('recipes', id).json()
 
-        def new(self, title: str=None, text: str=None, steps: list=None):
+        def new(self, title: str|None=None, text: str|None=None, steps: list|None=None):
             '''Create a recipe.
             
             Arguments:
@@ -259,7 +265,7 @@ class API:
                 'steps': steps,
             })).json()
 
-        def update(self, id: str, title: str=None, text: str=None, steps: list=None) -> bool:
+        def update(self, id: str, title: str|None=None, text: str|None=None, steps: list|None=None) -> bool:
             '''Update a recipe.
             
             Arguments:
@@ -448,8 +454,9 @@ class API:
 class WebsocketStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
     connect = ws = None
-    def __init__(self, *a, **kw):
+    def __init__(self, *a, ack=False, **kw):
         self.a, self.kw = a, kw
+        self.ack = ack
 
     async def __await__(self):
         await asyncio.sleep(1e-6)
@@ -457,7 +464,6 @@ class WebsocketStream:
 
     async def __aenter__(self):
         import websockets
-        self.ack = self.kw.get('ack')
         self.connect = websockets.connect(*self.a, **self.kw)
         self.ws = await self.connect.__aenter__()
         await asyncio.sleep(1e-6)
