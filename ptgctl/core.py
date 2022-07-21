@@ -215,8 +215,16 @@ class API:
         #     '''
         #     return self._delete('recordings', id).json()
 
-        def static(self, *fs):
-            return self._get('recordings/static', *fs).content
+        def static(self, *fs, display=False):
+            r = self._get('recordings/static', *fs)
+            if display:
+                print(r.content)
+                return
+
+            fname = '-'.join(map(str, fs))
+            with open(fname, 'wb') as f:
+                f.write(r.content)
+                
 
     # recipes
 
