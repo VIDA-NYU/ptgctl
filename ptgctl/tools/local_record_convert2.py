@@ -4,6 +4,7 @@
 
 '''
 from __future__ import annotations
+import warnings
 import os
 import sys
 import glob
@@ -35,7 +36,8 @@ def convert_video(rec_id, sid, key='image', fps=24, in_path=IN_PATH, out_path=OU
     if not overwrite and os.path.isfile(vid_fname):
         return vid_fname
 
-    data_iter = record_output.iter_video_stream(rec_id, sid, key, fps=fps, in_path=in_path, tobytes=False, **kw)
+    data_iter = record_output.iter_video_stream(
+        rec_id, sid, key, fps=fps, in_path=in_path, **kw)
     first, data_iter = _peek(data_iter, n=1)
     size = next((x.shape[:2] for t, x in first), (760, 4280))
 
@@ -80,8 +82,33 @@ def convert_json(rec_id, sid, in_path=IN_PATH, out_path=OUT_PATH, overwrite=Fals
     for ts, d in record_output.iter_zip_data(rec_id, sid, in_path=in_path):
         all_data.append({
             'timestamp': ts,
-            **d,
+            **{
+                k: v.tolist() if isinstance(v, np.ndarray) else v
+                for k, v in d.items()
+            },
         })
+
+    with open(fname, 'w') as f:
+        json.dump(all_data, f)
+    return fname
+
+
+def convert_imu_json(rec_id, sid, in_path=IN_PATH, out_path=OUT_PATH, overwrite=False):
+    fname = os.path.join(out_path, rec_id, f'{sid}.json')
+    os.makedirs(os.path.dirname(fname), exist_ok=True)
+    if not overwrite and os.path.isfile(fname):
+        return fname
+
+    all_ts = []
+    all_data = []
+    for ts, d in record_output.iter_zip_data(rec_id, sid, in_path=in_path):
+        timestamps = d['timestamps']
+        data = d['data']
+        if len(timestamps) != len(data):
+            warnings.warn(f"timestamps and {sid} data not equal length {len(timestamps)} != {len(data)}")
+        
+        all_ts.extend(timestamps[:len(data)])
+        all_data.extend(data[:len(timestamps)])
 
     with open(fname, 'w') as f:
         json.dump(all_data, f)
@@ -132,10 +159,14 @@ def convert(rec_id, *sids, in_path=IN_PATH, **kw):
             print(sid)
             if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
                 convert_video(rec_id, sid, in_path=in_path, scale=40 if sid == 'depthlt' else None, **kw)
-            elif sid in {'hand', 'eye'}:
+            elif sid in {'hand', 'eye'} or sid in {'gllCal', 'glfCal', 'grfCal', 'grrCal', 'depthltCal'}:
                 convert_json(rec_id, sid, in_path=in_path, **kw)
+            elif sid in {'imuaccel', 'imugyro', 'imumag'}:
+                convert_imu_json(rec_id, sid, in_path=in_path, **kw)
             elif sid in {'mic0'}:
                 convert_audio(rec_id, sid, in_path=in_path, **kw)
+            else:
+                print("skipping", sid)
         except Exception:
             import traceback
             traceback.print_exc()
