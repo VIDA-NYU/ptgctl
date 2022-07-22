@@ -2,6 +2,7 @@
 
 A Python Library and Command Line tool for interacting with the PTG API and data streams.
 
+### For how to record, see [this](HOW_TO_RECORD.md).
 
 ## Install
 
@@ -19,6 +20,41 @@ pip install -e '.[all]'
 ```
 
 ## CLI Usage
+
+
+### Recordings
+
+```bash
+# list available recordings
+ptgctl recordings ls
+
+# list all recordings with their stats (e.g. timestamps, size, etc.)
+ptgctl recordings ls --info
+
+# get the stats for recording coffee-test-1
+ptgctl recordings get coffee-test-1
+
+# start recording
+ptgctl recordings start my-recording-1
+# get the current recording
+ptgctl recordings current
+ptgctl recordings current --info  # get it with stats 
+# stop recording
+ptgctl recordings stop
+```
+
+Access recording exports: e.g.
+```bash
+ptgctl recordings static my-recording-1 main.mp4  # main camera
+ptgctl recordings static my-recording-1 gll.mp4   # grey left-rear camera
+ptgctl recordings static my-recording-1 depthlt.mp4  # depth camera
+ptgctl recordings static my-recording-1 mic0.wav   # microphone
+ptgctl recordings static my-recording-1 eye.json   # eye tracking
+ptgctl recordings static my-recording-1 hand.json  # hand tracking
+ptgctl recordings static my-recording-1 depthltCal.json  # depth calibration data
+...
+```
+
 
 ### Available Streams
 get/set details about a stream. This represents the metadata associated with a single data stream (e.g. a camera, accelerometer, or a microphone)
