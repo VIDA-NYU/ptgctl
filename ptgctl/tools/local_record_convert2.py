@@ -97,6 +97,7 @@ def convert_imu_json(rec_id, sid, in_path=IN_PATH, out_path=OUT_PATH, overwrite=
     fname = os.path.join(out_path, rec_id, f'{sid}.json')
     os.makedirs(os.path.dirname(fname), exist_ok=True)
     if not overwrite and os.path.isfile(fname):
+        print('skipping')
         return fname
 
     all_ts = []
@@ -107,8 +108,8 @@ def convert_imu_json(rec_id, sid, in_path=IN_PATH, out_path=OUT_PATH, overwrite=
         if len(timestamps) != len(data):
             warnings.warn(f"timestamps and {sid} data not equal length {len(timestamps)} != {len(data)}")
         
-        all_ts.extend(timestamps[:len(data)])
-        all_data.extend(data[:len(timestamps)])
+        all_ts.extend(timestamps[:len(data)].tolist())
+        all_data.extend(data[:len(timestamps)].tolist())
 
     with open(fname, 'w') as f:
         json.dump(all_data, f)
@@ -158,15 +159,17 @@ def convert(rec_id, *sids, in_path=IN_PATH, **kw):
         try:
             print(sid)
             if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
-                convert_video(rec_id, sid, in_path=in_path, scale=40 if sid == 'depthlt' else None, **kw)
+                f=convert_video(rec_id, sid, in_path=in_path, scale=40 if sid == 'depthlt' else None, **kw)
             elif sid in {'hand', 'eye'} or sid in {'gllCal', 'glfCal', 'grfCal', 'grrCal', 'depthltCal'}:
-                convert_json(rec_id, sid, in_path=in_path, **kw)
+                f=convert_json(rec_id, sid, in_path=in_path, **kw)
             elif sid in {'imuaccel', 'imugyro', 'imumag'}:
-                convert_imu_json(rec_id, sid, in_path=in_path, **kw)
+                f=convert_imu_json(rec_id, sid, in_path=in_path, **kw)
             elif sid in {'mic0'}:
-                convert_audio(rec_id, sid, in_path=in_path, **kw)
+                f=convert_audio(rec_id, sid, in_path=in_path, **kw)
             else:
                 print("skipping", sid)
+                continue
+            print(f)
         except Exception:
             import traceback
             traceback.print_exc()
