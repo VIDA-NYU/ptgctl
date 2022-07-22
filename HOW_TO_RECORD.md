@@ -46,6 +46,8 @@ ptgctl recordings stop
 ptgctl recordings get my-special-recording
 ```
 
+Remember to keep the Hololens charged, so please plug it in when you're done! :)
+
 ## Getting exported videos & JSON
 
 ```bash
