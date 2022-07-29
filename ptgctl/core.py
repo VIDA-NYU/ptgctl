@@ -213,13 +213,22 @@ class API:
             '''
             return self._put('recordings/stop').json()
 
-        # def delete(self, id: str) -> bool:
-        #     '''Delete a stream.
+        def rename(self, id: str, new_id: str) -> bool:
+            '''Rename a recording.
             
-        #     Arguments:
-        #         id (str): The stream ID.
-        #     '''
-        #     return self._delete('recordings', id).json()
+            Arguments:
+                id (str): The recording ID.
+                new_id (str): The new recording ID.
+            '''
+            return self._put('recordings', id, 'rename', new_id).json()
+
+        def delete(self, id: str) -> bool:
+            '''Delete a recording.
+            
+            Arguments:
+                id (str): The recording ID.
+            '''
+            return self._delete('recordings', id).json()
 
         def static(self, *fs, out_dir='.', display=False):
             if not any(fs):
@@ -233,7 +242,7 @@ class API:
             download_file(r, fname)
             print('wrote to', fname)
 
-        async def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+        async def replay_async(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
             '''Replay a recording
 
             Arguments:
@@ -258,6 +267,12 @@ class API:
                         break
             for pbar in pbars.values():
                 pbar.close()
+
+        def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+            import asyncio
+            return asyncio.run(self.replay(
+                rec_id, stream_ids, 
+                prefix=prefix, fullspeed=fullspeed, interval=interval))
 
     # recipes
 
