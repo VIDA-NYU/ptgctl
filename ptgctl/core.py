@@ -232,7 +232,32 @@ class API:
             fname = os.path.join(out_dir, '-'.join(map(str, fs)))
             download_file(r, fname)
             print('wrote to', fname)
-                
+
+        async def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+            '''Replay a recording
+
+            Arguments:
+                rec_id (str): The recording ID
+                stream_ids (str): The ID(s) of the streams to be replayed (separated by '+')
+                prefix (str): A prefix to be added to the replayed Redis Stream (e.g. 'replay:')
+                fullspeed (bool): set to true to ignore the timestamps and play the data as fast as possible (default: False)
+                interval (float): specify how often the progress to be updated (default: 1 second)
+
+            .. code-block: shell
+            ptgctl recordings replay coffee-test-1 main+depthlt --prefix "replay:"
+
+            '''
+            import tqdm
+            async with self._ws('recordings/replay', rec_id=rec_id, prefix=prefix, sid=stream_ids, fullspeed=fullspeed, interval=interval) as conn:
+                pbars = {d:tqdm.tqdm(desc=d, position=p) for p,d in enumerate(stream_ids.split('+'))}
+                while True:
+                    progress = json.loads(await conn.ws.recv())
+                    for d,c in progress['updates']:
+                        pbars[d].update(c)
+                    if len(progress['active'])==0:
+                        break
+            for pbar in pbars.values():
+                pbar.close()
 
     # recipes
 
