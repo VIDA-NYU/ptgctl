@@ -294,25 +294,33 @@ class API:
             '''Create a recipe.
             
             Arguments:
-                recipe (dict): The recipe info. 
+                recipe (dict): The recipe info. Can also be a path to a JSON file.
                     name (str): The human-readable name of the recipe
                     ingredients (list[str]): The recipe ingredients
                     tools (list[str]): The recipe tools
                     instructions (list[str]): The recipe instruction steps.
             '''
+            if isinstance(recipe, str):
+                if os.path.isfile(recipe):
+                    recipe = open(recipe, 'r').read()
+                recipe = json.loads(recipe)
             return self._post('recipes', json=recipe).json()
 
-        def update(self, id: str, recipe: dict) -> bool:
+        def update(self, id: str, recipe: dict|str) -> bool:
             '''Update a recipe.
             
             Arguments:
-                id (str): The recipe ID.
+                id (str): The recipe ID. Can also be a path to a JSON file.
                 recipe (dict): The recipe info. 
                     name (str): The human-readable name of the recipe
                     ingredients (list[str]): The recipe ingredients
                     tools (list[str]): The recipe tools
                     instructions (list[str]): The recipe instruction steps.
             '''
+            if isinstance(recipe, str):
+                if os.path.isfile(recipe):
+                    recipe = open(recipe, 'r').read()
+                recipe = json.loads(recipe)
             return self._put('recipes', id, json=recipe).json()
 
         def delete(self, id: str) -> bool:
