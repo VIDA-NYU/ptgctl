@@ -290,39 +290,30 @@ class API:
             '''
             return self._get('recipes', id).json()
 
-        def new(self, title: str|None=None, text: str|None=None, steps: list|None=None):
+        def new(self, recipe):
             '''Create a recipe.
             
             Arguments:
-                id (str): The recipe ID.
-                title (str): The recipe title.
-                text (str): The full to-be-parsed text of the recipe. Use ``text=True`` (``--text``) to read the text from stdin.
-                steps (list[dict]): The already-parsed recipe steps. An alternative to ``text``.
+                recipe (dict): The recipe info. 
+                    name (str): The human-readable name of the recipe
+                    ingredients (list[str]): The recipe ingredients
+                    tools (list[str]): The recipe tools
+                    instructions (list[str]): The recipe instruction steps.
             '''
-            if text is True:
-                text = sys.stdin.read()
-            return self._post('recipes', json=util.filternone({
-                'title': title,
-                'text': text,
-                'steps': steps,
-            })).json()
+            return self._post('recipes', json=recipe).json()
 
-        def update(self, id: str, title: str|None=None, text: str|None=None, steps: list|None=None) -> bool:
+        def update(self, id: str, recipe: dict) -> bool:
             '''Update a recipe.
             
             Arguments:
                 id (str): The recipe ID.
-                title (str): The recipe title.
-                text (str): The full to-be-parsed text of the recipe. Use ``text=True`` (``--text``) to read the text from stdin.
-                steps (list[dict]): The already-parsed recipe steps. An alternative to ``text``.
+                recipe (dict): The recipe info. 
+                    name (str): The human-readable name of the recipe
+                    ingredients (list[str]): The recipe ingredients
+                    tools (list[str]): The recipe tools
+                    instructions (list[str]): The recipe instruction steps.
             '''
-            if text is True:
-                text = sys.stdin.read()
-            return self._put('recipes', id, json=util.filternone({
-                'title': title,
-                'text': text,
-                'steps': steps,
-            })).json()
+            return self._put('recipes', id, json=recipe).json()
 
         def delete(self, id: str) -> bool:
             '''Delete a recipe.
