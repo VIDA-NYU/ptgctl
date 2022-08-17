@@ -112,7 +112,7 @@ class API:
         log.debug('request args: %s', kw)
         t0 = time.time()
         r = self.sess.request(method, url, headers=headers, **kw)
-        log.info('took %.3g secs', time.time() - t0)
+        log.info('%d took %.3g secs', r.status_code, time.time() - t0)
         if raises:
             r.raise_for_status()
         return r
@@ -241,6 +241,33 @@ class API:
             fname = os.path.join(out_dir, '-'.join(map(str, fs)))
             download_file(r, fname)
             print('wrote to', fname)
+
+        # def raw_static(self, *fs, out_dir='.', display=False):
+        #     if not any(fs):
+        #         raise ValueError('You must provide a link to a static file')
+        #     r = self._get('recordings/static/raw', *fs)
+        #     if display:
+        #         print(r.content)
+        #         return
+
+        #     fname = os.path.join(out_dir, '-'.join(map(str, fs)))
+        #     download_file(r, fname)
+        #     print('wrote to', fname)
+
+        def upload(self, recording_id, fname, path, overwrite=None):
+            '''Upload a file to an existing recording.
+            
+            Arguments:
+                recording_id (str): The recording ID to save to
+                fname (str): The name to give the file on the server (including proper extension)
+                path (str): The path to the file locally.
+                overwrite (bool): By default, if a file exists it will throw an error.
+                    Use this to force overwrite an existing file. Be careful not to overwrite the original streams.
+            '''
+            r = self._post(
+                'recordings/upload', recording_id, fname, 
+                params={'overwrite': overwrite},
+                files={'file': open(path, 'rb')})
 
         async def replay_async(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
             '''Replay a recording
