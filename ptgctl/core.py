@@ -297,7 +297,7 @@ class API:
 
         def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
             import asyncio
-            return asyncio.run(self.replay(
+            return asyncio.run(self.replay_async(
                 rec_id, stream_ids, 
                 prefix=prefix, fullspeed=fullspeed, interval=interval))
 
