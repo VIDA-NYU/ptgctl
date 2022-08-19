@@ -112,7 +112,7 @@ class API:
         log.debug('request args: %s', kw)
         t0 = time.time()
         r = self.sess.request(method, url, headers=headers, **kw)
-        log.info('took %.3g secs', time.time() - t0)
+        log.info('%d took %.3g secs', r.status_code, time.time() - t0)
         if raises:
             r.raise_for_status()
         return r
@@ -213,13 +213,22 @@ class API:
             '''
             return self._put('recordings/stop').json()
 
-        # def delete(self, id: str) -> bool:
-        #     '''Delete a stream.
+        def rename(self, id: str, new_id: str) -> bool:
+            '''Rename a recording.
             
-        #     Arguments:
-        #         id (str): The stream ID.
-        #     '''
-        #     return self._delete('recordings', id).json()
+            Arguments:
+                id (str): The recording ID.
+                new_id (str): The new recording ID.
+            '''
+            return self._put('recordings', id, 'rename', new_id).json()
+
+        def delete(self, id: str) -> bool:
+            '''Delete a recording.
+            
+            Arguments:
+                id (str): The recording ID.
+            '''
+            return self._delete('recordings', id).json()
 
         def static(self, *fs, out_dir='.', display=False):
             if not any(fs):
@@ -233,7 +242,34 @@ class API:
             download_file(r, fname)
             print('wrote to', fname)
 
-        async def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+        # def raw_static(self, *fs, out_dir='.', display=False):
+        #     if not any(fs):
+        #         raise ValueError('You must provide a link to a static file')
+        #     r = self._get('recordings/static/raw', *fs)
+        #     if display:
+        #         print(r.content)
+        #         return
+
+        #     fname = os.path.join(out_dir, '-'.join(map(str, fs)))
+        #     download_file(r, fname)
+        #     print('wrote to', fname)
+
+        def upload(self, recording_id, fname, path, overwrite=None):
+            '''Upload a file to an existing recording.
+            
+            Arguments:
+                recording_id (str): The recording ID to save to
+                fname (str): The name to give the file on the server (including proper extension)
+                path (str): The path to the file locally.
+                overwrite (bool): By default, if a file exists it will throw an error.
+                    Use this to force overwrite an existing file. Be careful not to overwrite the original streams.
+            '''
+            r = self._post(
+                'recordings/upload', recording_id, fname, 
+                params={'overwrite': overwrite},
+                files={'file': open(path, 'rb')})
+
+        async def replay_async(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
             '''Replay a recording
 
             Arguments:
@@ -259,6 +295,12 @@ class API:
             for pbar in pbars.values():
                 pbar.close()
 
+        def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+            import asyncio
+            return asyncio.run(self.replay_async(
+                rec_id, stream_ids, 
+                prefix=prefix, fullspeed=fullspeed, interval=interval))
+
     # recipes
 
     class recipes(util.Nest):
@@ -275,39 +317,38 @@ class API:
             '''
             return self._get('recipes', id).json()
 
-        def new(self, title: str|None=None, text: str|None=None, steps: list|None=None):
+        def new(self, recipe):
             '''Create a recipe.
             
             Arguments:
-                id (str): The recipe ID.
-                title (str): The recipe title.
-                text (str): The full to-be-parsed text of the recipe. Use ``text=True`` (``--text``) to read the text from stdin.
-                steps (list[dict]): The already-parsed recipe steps. An alternative to ``text``.
+                recipe (dict): The recipe info. Can also be a path to a JSON file.
+                    name (str): The human-readable name of the recipe
+                    ingredients (list[str]): The recipe ingredients
+                    tools (list[str]): The recipe tools
+                    instructions (list[str]): The recipe instruction steps.
             '''
-            if text is True:
-                text = sys.stdin.read()
-            return self._post('recipes', json=util.filternone({
-                'title': title,
-                'text': text,
-                'steps': steps,
-            })).json()
+            if isinstance(recipe, str):
+                if os.path.isfile(recipe):
+                    recipe = open(recipe, 'r').read()
+                recipe = json.loads(recipe)
+            return self._post('recipes', json=recipe).json()
 
-        def update(self, id: str, title: str|None=None, text: str|None=None, steps: list|None=None) -> bool:
+        def update(self, id: str, recipe: dict|str) -> bool:
             '''Update a recipe.
             
             Arguments:
-                id (str): The recipe ID.
-                title (str): The recipe title.
-                text (str): The full to-be-parsed text of the recipe. Use ``text=True`` (``--text``) to read the text from stdin.
-                steps (list[dict]): The already-parsed recipe steps. An alternative to ``text``.
+                id (str): The recipe ID. Can also be a path to a JSON file.
+                recipe (dict): The recipe info. 
+                    name (str): The human-readable name of the recipe
+                    ingredients (list[str]): The recipe ingredients
+                    tools (list[str]): The recipe tools
+                    instructions (list[str]): The recipe instruction steps.
             '''
-            if text is True:
-                text = sys.stdin.read()
-            return self._put('recipes', id, json=util.filternone({
-                'title': title,
-                'text': text,
-                'steps': steps,
-            })).json()
+            if isinstance(recipe, str):
+                if os.path.isfile(recipe):
+                    recipe = open(recipe, 'r').read()
+                recipe = json.loads(recipe)
+            return self._put('recipes', id, json=recipe).json()
 
         def delete(self, id: str) -> bool:
             '''Delete a recipe.

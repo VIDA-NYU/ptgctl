@@ -1,5 +1,6 @@
 import inspect
 import functools
+from typing import Type, TypeVar
 
 
 
@@ -100,6 +101,8 @@ def belongs_to_module(mod, func):
 
 # cli namespacing
 
+T = TypeVar("T")
+
 class _NestedMetaClass(type):
     def __init__(self, name, bases, attrs):
         super().__init__(name, bases, attrs)
@@ -107,9 +110,9 @@ class _NestedMetaClass(type):
 
     # Works as a property that instantiates a nested class on first access.
     # the created instance will be used for subsequent access.
-    def __get__(self, instance, owner=None):
+    def __get__(self: Type[T], instance, owner=None) -> T:
         if instance is None:  # for class based access
-            return self
+            return self  # type: ignore
         try:
             return getattr(instance, self.__attr_name__)
         except AttributeError:
