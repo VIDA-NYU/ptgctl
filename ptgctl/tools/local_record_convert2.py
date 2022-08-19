@@ -156,11 +156,13 @@ def convert(rec_id, *sids, in_path=IN_PATH, **kw):
     print('recording path:', rec_path, rec_id)
     print('sids:', sids)
     for sid in sids:
+        if not os.path.exists(os.path.join(in_path, rec_id, sid)):
+            print(f"{rec_id}/{sid} doesn't exist")
         try:
             print(sid)
             if sid in {'main', 'gll', 'glf', 'grf', 'grr', 'depthlt'}:
                 f=convert_video(rec_id, sid, in_path=in_path, scale=40 if sid == 'depthlt' else None, **kw)
-            elif sid in {'hand', 'eye'} or sid in {'gllCal', 'glfCal', 'grfCal', 'grrCal', 'depthltCal'}:
+            elif sid in {'hand', 'eye', 'yolo3d:v1'} or sid in {'gllCal', 'glfCal', 'grfCal', 'grrCal', 'depthltCal'}:
                 f=convert_json(rec_id, sid, in_path=in_path, **kw)
             elif sid in {'imuaccel', 'imugyro', 'imumag'}:
                 f=convert_imu_json(rec_id, sid, in_path=in_path, **kw)

@@ -104,6 +104,10 @@ def load(data, metadata=False, only_header=False):
 
     # special cases
 
+    # json list - no header
+    if ftype in {123,93}:
+        d['values'] = parse.reset().pop_json()
+        return d
     # hand+eye - no header
     if ftype in {34}: 
         if only_header:
