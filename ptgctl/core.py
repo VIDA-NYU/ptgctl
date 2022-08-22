@@ -4,12 +4,14 @@ import sys
 import json
 import time
 import asyncio
+import contextlib
 from typing import List
 import requests
 from http.cookiejar import LWPCookieJar
 from urllib.parse import urlencode
 from . import util
 from .util import color
+import tqdm
 
 log = util.getLogger(__name__, level='info')
 
@@ -17,6 +19,83 @@ log = util.getLogger(__name__, level='info')
 # URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
 URL = 'https://api.ptg.poly.edu'
 LOCAL_URL = 'http://localhost:7890'
+
+
+
+
+class WebsocketStream:
+    '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
+    def __init__(self, *a, params=None, **kw):
+        self.a, self.kw = a, kw
+        self.params = params or {}
+
+    async def __await__(self):
+        await asyncio.sleep(1e-6)
+        return await self.connect
+
+    async def __aenter__(self):
+        import websockets
+        self.connect = websockets.connect(*self.a, **self.kw)
+        self.ws = await self.connect.__aenter__()
+        await asyncio.sleep(1e-6)
+        return self
+    
+    async def __aexit__(self, *a):
+        await self.connect.__aexit__(*a)
+        self.connect = self.ws = None
+        await asyncio.sleep(1e-6)
+
+    
+
+class DataStream(WebsocketStream):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.batch = self.params.get('batch')
+        self.ack = self.params.get('ack')
+
+    async def recv_data(self):
+        await asyncio.sleep(1e-6)
+        offsets = json.loads(await self.ws.recv())
+        content = await self.ws.recv()
+        return util.unpack_entries(offsets, content)
+
+    async def send_data(self, data):
+        offsets, entries = util.pack_entries([data] if not self.batch else data)
+        if self.batch:
+            await self.ws.send(','.join(map(str, offsets)))
+        await self.ws.send(bytes(entries))
+        if self.ack:
+            await self.ws.recv()  # ack
+        await asyncio.sleep(1e-6)
+
+
+class ReplayStream(WebsocketStream):
+    def __init__(self, *a, show_pbar=True, **kw):
+        super().__init__(*a, **kw)
+        self.show_pbar = show_pbar
+    
+    async def __aenter__(self):
+        self.pbars = {}
+        return await super().__aenter__()
+
+    async def __aexit__(self, *a):
+        for p in self.pbars.values():
+            p.close()
+        return await super().__aexit__(*a)
+
+    async def progress(self):
+        progress = json.loads(await self.ws.recv())
+        for sid, n in progress['updates']:
+            if sid not in self.pbars:
+                self.pbars[sid] = tqdm.tqdm(desc=sid)
+            self.pbars[sid].update(n)
+        return progress['active']
+
+    async def done(self):
+        while await self.progress():
+            pass
+
+
 
 class API:
     '''The PTG API. 
@@ -122,14 +201,14 @@ class API:
     def _post(self, *a, **kw) -> requests.Response: return self._do('POST', *a, **kw)
     def _delete(self, *a, **kw) -> requests.Response: return self._do('DELETE', *a, **kw)
 
-    def _ws(self, *url_parts, headers: dict|None=None, connect_kwargs: dict|None=None, **params):
+    def _ws(self, *url_parts, headers: dict|None=None, connect_kwargs: dict|None=None, cls=WebsocketStream, **params):
         # import websockets
-        params = urlencode(params) if params else None
+        params_str = urlencode({k: v for k, v in params.items() if k and v is not None}) if params else ''
         headers = self._headers(headers)
-        url = os.path.join(self._wsurl, *map(str, url_parts)) + (f'?{params}' if params else '')
+        url = os.path.join(self._wsurl, *map(str, url_parts)) + (f'?{params_str}' if params_str else '')
         log.info('websocket connect: %s', url)
         # return websockets.connect(url, extra_headers=headers, **(connect_kwargs or {}))
-        return WebsocketStream(url, extra_headers=headers, **(connect_kwargs or {}))
+        return cls(url, params=params, extra_headers=headers, **(connect_kwargs or {}))
 
     def ping(self, error=False):
         if error:
@@ -269,7 +348,7 @@ class API:
                 params={'overwrite': overwrite},
                 files={'file': open(path, 'rb')})
 
-        async def replay_async(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+        def replay_connect(self, rec_id, stream_ids, prefix=None, fullspeed=None, interval=None):
             '''Replay a recording
 
             Arguments:
@@ -283,23 +362,53 @@ class API:
             ptgctl recordings replay coffee-test-1 main+depthlt --prefix "replay:"
 
             '''
-            import tqdm
-            async with self._ws('recordings/replay', rec_id=rec_id, prefix=prefix, sid=stream_ids, fullspeed=fullspeed, interval=interval) as conn:
-                pbars = {d:tqdm.tqdm(desc=d, position=p) for p,d in enumerate(stream_ids.split('+'))}
-                while True:
-                    progress = json.loads(await conn.ws.recv())
-                    for d,c in progress['updates']:
-                        pbars[d].update(c)
-                    if len(progress['active'])==0:
-                        break
-            for pbar in pbars.values():
-                pbar.close()
+            return self._ws(
+                'recordings/replay', 
+                cls=ReplayStream,
+                rec_id=rec_id, 
+                prefix=prefix, 
+                sid=stream_ids, 
+                fullspeed=fullspeed, 
+                interval=interval)
 
-        def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
-            import asyncio
-            return asyncio.run(self.replay_async(
-                rec_id, stream_ids, 
-                prefix=prefix, fullspeed=fullspeed, interval=interval))
+        @util.async2sync
+        async def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+            '''Replay a recording
+
+            Arguments:
+                rec_id (str): The recording ID
+                stream_ids (str): The ID(s) of the streams to be replayed (separated by '+')
+                prefix (str): A prefix to be added to the replayed Redis Stream (e.g. 'replay:')
+                fullspeed (bool): set to true to ignore the timestamps and play the data as fast as possible (default: False)
+                interval (float): specify how often the progress to be updated (default: 1 second)
+
+            .. code-block: shell
+            ptgctl recordings replay coffee-test-1 main+depthlt --prefix "replay:"
+
+            '''
+            # import tqdm, contextlib
+            async with self.replay_connect(rec_id, stream_ids, prefix, fullspeed, interval) as c:
+                while await c.progress():
+                    pass
+                # with contextlib.ExitStack() as stack:
+                #     pbars = {
+                #         sid: stack.enter_context(tqdm.tqdm(desc=sid, position=i)) 
+                #         for i, sid in enumerate(stream_ids.split('+'))
+                #     }
+                #     while True:
+                #         progress = json.loads(await conn.ws.recv())
+                #         for sid, n in progress['updates']:
+                #             pbars[sid].update(n)
+                #         if not progress['active']:
+                #             break
+
+        replay_async = replay.asyncio
+
+        # def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+        #     import asyncio
+        #     return asyncio.run(self.replay_async(
+        #         rec_id, stream_ids, 
+        #         prefix=prefix, fullspeed=fullspeed, interval=interval))
 
     # recipes
 
@@ -473,7 +582,7 @@ class API:
                     for sid, ts, data in await ws.aread():
                         img = np.array(Image.open(io.BytesIO(data)))  # rgb array
         '''
-        return self._ws('data', stream_id, 'pull', **kw)
+        return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
     def data_push_connect(self, stream_id: str, **kw) -> 'WebsocketStream':
         '''Connect to the server and send data over an asynchronous websocket.
@@ -492,7 +601,7 @@ class API:
                     # TODO: support timestamps + multiple sid
                     await ws.awrite(data)
         '''
-        return self._ws('data', stream_id, 'push', **kw)
+        return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 
     # tools
 
@@ -526,47 +635,6 @@ def download_file(r, fname=None, block_size=1024):
             for data in r.iter_content(block_size):
                 pbar.update(len(data)/UNIT)
                 f.write(data)
-
-
-class WebsocketStream:
-    '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
-    connect = ws = None
-    def __init__(self, *a, ack=False, **kw):
-        self.a, self.kw = a, kw
-        self.ack = ack
-
-    async def __await__(self):
-        await asyncio.sleep(1e-6)
-        return await self.connect
-
-    async def __aenter__(self):
-        import websockets
-        self.connect = websockets.connect(*self.a, **self.kw)
-        self.ws = await self.connect.__aenter__()
-        await asyncio.sleep(1e-6)
-        return self
-    
-    async def __aexit__(self, *a):
-        await self.connect.__aexit__(*a)
-        self.connect = self.ws = None
-        await asyncio.sleep(1e-6)
-
-    async def recv_data(self):
-        await asyncio.sleep(1e-6)
-        offsets = json.loads(await self.ws.recv())
-        content = await self.ws.recv()
-        return util.unpack_entries(offsets, content)
-
-    async def send_data(self, data, batch=False, ack=False):
-        offsets, entries = util.pack_entries([data])
-        if batch:
-            await self.ws.send(','.join(map(str, offsets)))
-        await self.ws.send(bytes(entries))
-        if ack:
-            await self.ws.recv()  # ack
-        await asyncio.sleep(1e-6)
-
-
 
 
 # This just implements a few command line features that we may not necessarily want from the python side

@@ -36,8 +36,8 @@ def load_all(read_data):#, dt_tol=0.1
 
 
 
-def unpack(data, keys):
-    return [nested_key(data, k) for k in keys]
+def unpack(data, keys, prefix=None):
+    return [nested_key(data, f'{prefix or ""}{k}') for k in keys]
 
 
 def nested_key(data, key, default=...):
