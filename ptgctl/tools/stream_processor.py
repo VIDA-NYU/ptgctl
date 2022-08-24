@@ -11,13 +11,16 @@ RawRecorder.run_while_active
 
 '''
 from __future__ import annotations
+# import heartrate; heartrate.trace(browser=True)
 import functools
 from typing import AsyncIterator, cast
 import os
+import time
 import asyncio
 import orjson
 import contextlib
 import datetime
+import tqdm
 
 import numpy as np
 from PIL import Image
@@ -63,19 +66,24 @@ class Context:
 
 
 class StreamReader(Context):
-    def __init__(self, api, streams, recording_id=None, raw=False, merged=False, **kw):
+    def __init__(self, api, streams, recording_id=None, raw=False, progress=True, merged=False, **kw):
         super().__init__(streams=streams, **kw)
         self.api = api
         self.recording_id = recording_id
         self.raw = raw
         self.merged = merged
+        self.progress = progress
 
-    async def acontext(self, streams, fullspeed=None) -> 'AsyncIterator[StreamReader]':
+    async def acontext(self, streams, fullspeed=None, last=None, timeout=5000) -> 'AsyncIterator[StreamReader]':
         self.replayer = None
         rid = self.recording_id
         if rid:
-            async with self.api.recordings.replay_connect(rid, '+'.join(streams), fullspeed=fullspeed, prefix=f'{rid}:') as self.replayer:
-                async with self.api.data_pull_connect('+'.join(f'{rid}:{s}' for s in streams)) as self.ws:
+            async with self.api.recordings.replay_connect(
+                    rid, '+'.join(streams), 
+                    fullspeed=fullspeed, 
+                    prefix=f'{rid}:'
+            ) as self.replayer:
+                async with self.api.data_pull_connect('+'.join(f'{rid}:{s}' for s in streams), last=last, timeout=timeout) as self.ws:
                     yield self
             return
 
@@ -96,6 +104,8 @@ class StreamReader(Context):
         pbar = tqdm.tqdm()
         while self.running:
             data = await self.ws.recv_data()
+            if self.recording_id:
+                data = [(sid[len(self.recording_id)+1:], t, x) for (sid, t, x) in data]
             if self.merged:
                 yield holoframe.load_all(data)
                 pbar.update()
@@ -125,19 +135,63 @@ class StreamWriter(Context):
         await self.ws.send_data(data)
 
 
+import cv2
+class ImageOutput:#'avc1', 'mp4v', 
+    def __init__(self, src, fps, cc='mp4v', show=None):
+        self.src = src
+        self.cc = cc
+        self.fps = fps
+        self._show = not src if show is None else show
+        self.active = self.src or self._show
 
-def maybe_profile(func):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        if self._w:
+            self._w.release()
+        self._w = None
+        if self._show:
+            cv2.destroyAllWindows()
+    async def __aenter__(self): return self.__enter__()
+    async def __aexit__(self, *a): return self.__exit__(*a)
+
+    def output(self, im):
+        if self.src:
+            self.write_video(im)
+        if self._show:
+            self.show_video(im)
+
+    _w = None
+    def write_video(self, im):
+        if not self._w:
+            self._w = cv2.VideoWriter(
+                self.src, cv2.VideoWriter_fourcc(*self.cc),
+                self.fps, im.shape[:2][::-1], True)
+            if not self._w.isOpened():
+                raise RuntimeError(f"Video writer did not open - probably because {self.cc}")
+        self._w.write(im)
+
+    def show_video(self, im):
+        cv2.imshow('output', im)
+        if cv2.waitKey(1) == ord('q'):  # q to quit
+            raise StopIteration
+
+
+def maybe_profile(func, min_time=20):
     @functools.wraps(func)
     def inner(*a, profile=False, **kw):
         if not profile:
             return func(*a, **kw)
         from pyinstrument import Profiler
         p = Profiler()
+        t0 = time.time()
         try:
             with p:
                 return func(*a, **kw)
         finally:
-            p.print()
+            if time.time() - t0 > min_time:
+                p.print()
     return inner
 
 
@@ -176,64 +230,102 @@ class Yolo3D(Processor):
     world_box_keys = ['xyz_tl', 'xyz_br', 'xyz_tr', 'xyz_bl', 'xyzc', 'confidence', 'class_id']
     min_dist_secs = 1
 
-    def __init__(self, api):
-        super().__init__(api)
+    def __init__(self):
+        super().__init__()
         import torch
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True).to(device)
-        self.labels = np.asarray(self.model.names)
+        self.labels = np.asarray([
+            self.model.names.get(i, i) for i in range(max(self.model.names))
+        ])
 
-    async def call_async(self, prefix=None, **kw):
+    async def call_async(self, prefix=None, replay=None, fullspeed=None, **kw):
         from ptgctl.pt3d import Points3D
         self.data = {}
 
         prefix = prefix or ''
         out_prefix = f'{prefix}{self.output_prefix}'
-        in_sids = [f'{prefix}main', f'{prefix}depthlt', f'{prefix}depthltCal']
+        in_sids = ['main', 'depthlt', 'depthltCal']
         out_sids = [f'{out_prefix}:image', f'{out_prefix}:world']
-        async with StreamReader(self.api, in_sids, merged=True) as reader, \
-                   StreamWriter(self.api, out_sids, test=True) as writer:
-            async for data in reader:
+
+        async with StreamReader(self.api, in_sids, recording_id=replay, fullspeed=fullspeed, merged=True) as reader, \
+                   StreamWriter(self.api, out_sids, test=True) as writer, \
+                   ImageOutput(None, None, show=True) as imout:
+            async def _stream():
+                data = holoframe.load_all(self.api.data(f'{replay if replay else ""}:depthltCal'))
+                if replay:
+                    data = {k[len(replay)+1:]:v for k, v in data.items()}
                 self.data.update(data)
-                if 'depthltCal' not in self.data:
-                    self.data.update(holoframe.load_all(self.api.data('depthltCal')) or {})
 
-                try:
-                    main, depthlt, depthltCal = [self.data[k] for k in in_sids]
-                    rgb = main['image']
+                async for data in reader:
+                    self.data.update(data)
+                    # if 'depthltCal' not in self.data:
+                    #     self.data.update(holoframe.load_all(self.api.data('depthltCal')) or {})
 
-                    # check time difference
-                    mts = main['timestamp']
-                    dts = depthlt['timestamp']
-                    secs = parse_epoch_time(mts) - parse_epoch_time(dts)
-                    if abs(secs) > self.min_dist_secs:
-                        raise KeyError(f"timestamps too far apart main={mts} depth={dts} ∆{secs:.3g}s")
-                    
-                    # create point transformer
-                    pts3d = Points3D(
-                        rgb, depthlt['image'], depthltCal['lut'],
-                        depthlt['rig2world'], depthltCal['rig2cam'], main['cam2world'],
-                        [main['focalX'], main['focalY']], [main['principalX'], main['principalY']])
-                except KeyError as e:
-                    print(f'KeyError: {e}')
-                    continue
+                    try:
+                        main, depthlt, depthltCal = [self.data[k] for k in in_sids]
+                        rgb = main['image']
 
-                xyxy = self.model(rgb).xyxy[0].numpy()
-                confs = xyxy[:, 4]
-                class_ids = xyxy[:, 5]
-                xyz_tl, xyz_br, xyz_tr, xyz_bl, xyzc, dist = pts3d.transform_box(xyxy[:, :4])
-                valid = dist < 5  # make sure the points aren't too far
+                        # check time difference
+                        mts = main['timestamp']
+                        dts = depthlt['timestamp']
+                        secs = parse_epoch_time(mts) - parse_epoch_time(dts)
+                        if abs(secs) > self.min_dist_secs:
+                            raise KeyError(f"timestamps too far apart main={mts} depth={dts} ∆{secs:.3g}s")
+                        
+                        # create point transformer
+                        pts3d = Points3D(
+                            rgb, depthlt['image'], depthltCal['lut'],
+                            depthlt['rig2world'], depthltCal['rig2cam'], main['cam2world'],
+                            [main['focalX'], main['focalY']], [main['principalX'], main['principalY']])
+                    except KeyError as e:
+                        tqdm.tqdm.write(f'KeyError: {e} {set(self.data)}')
+                        continue
 
-                writer.write([
-                    self.dump(self.image_box_keys, [xyxy, confs, class_ids], valid),
-                    self.dump(self.world_box_keys, [xyz_tl, xyz_br, xyz_tr, xyz_bl, xyzc, confs, class_ids], valid),
-                ])
+                    xyxy = self.model(rgb).xyxy[0].numpy()
+                    confs = xyxy[:, 4]
+                    class_ids = xyxy[:, 5].astype(int)
+                    xyxy = xyxy[:, :4]
+                    xyz_tl, xyz_br, xyz_tr, xyz_bl, xyzc, dist = pts3d.transform_box(xyxy[:, :4])
+                    valid = dist < 5  # make sure the points aren't too far
+
+                    # print(xyxy)
+                    # print(class_ids, confs)
+
+                    # await writer.write([
+                    #     self.dump(self.image_box_keys, [xyxy, confs, class_ids], valid),
+                    #     self.dump(self.world_box_keys, [xyz_tl, xyz_br, xyz_tr, xyz_bl, xyzc, confs, class_ids], valid),
+                    # ])
+                    imout.output(draw_boxes(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), xyxy, [
+                        f'{self.labels[l]} {c:.0%} [{x:.0f},{y:.0f},{z:.0f}]' 
+                        for l, c, (x,y,z) in zip(class_ids, confs, xyzc)
+                    ]))
+
+            await asyncio.gather(_stream(), reader.watch_replay())
 
     def dump(self, keys, xs, valid):
         return orjson.dumps([
             dict(zip(keys, xs), label=self.labels[int(xs[-1])])
             for xs in zip(*[x[valid] for x in xs])
         ], option=orjson.OPT_NAIVE_UTC | orjson.OPT_SERIALIZE_NUMPY)
+
+
+def draw_boxes(im, boxes, labels):
+    for xy, label in zip(boxes, labels):
+        xy = list(map(int, xy))
+        im = cv2.rectangle(im, xy[:2], xy[2:4], (0,255,0), 2)
+        im = cv2.putText(im, label, xy[:2], cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    return im
+
+
+def draw_text_list(img, texts, i=-1, tl=(10, 50), scale=0.5, space=50, color=(255, 255, 255), thickness=1):
+    for i, txt in enumerate(texts, i+1):
+        cv2.putText(
+            img, txt, 
+            (int(tl[0]), int(tl[1]+scale*space*i)), 
+            cv2.FONT_HERSHEY_COMPLEX, 
+            scale, color, thickness)
+    return img, i
 
 
 class ActionClip(Processor):
@@ -244,8 +336,8 @@ class ActionClip(Processor):
         'instructions': '{}',
     }
 
-    def __init__(self, api, model_name="ViT-B/32"):
-        super().__init__(api)
+    def __init__(self, model_name="ViT-B/32"):
+        super().__init__()
         import torch, clip
         self.device = device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model, self.preprocess = clip.load(model_name, device=device)
@@ -259,7 +351,7 @@ class ActionClip(Processor):
                 return rec_id
             await asyncio.sleep(delay)
 
-    async def run_while_active(self, recipe_id, prefix=None, last=None):
+    async def run_while_active(self, recipe_id, , prefix=None, replay=None, fullspeed=None):
         assert recipe_id, "You must provide a recipe ID, otherwise we have nothing to compare"
         # load the recipe from the api
         recipe = self.api.recipes.get(recipe_id)
@@ -268,8 +360,9 @@ class ActionClip(Processor):
 
         out_keys = set(texts)
         out_sids = [f'{prefix or ""}{self.output_prefix}:{k}' for k in out_keys]
-        async with StreamReader(self.api, [f'{prefix or ""}main']) as reader, \
-                   StreamWriter(self.api, out_sids, test=True) as writer:
+        async with StreamReader(self.api, [f'{prefix or ""}main'], recording_id=replay, fullspeed=fullspeed) as reader, \
+                   StreamWriter(self.api, out_sids, test=True) as writer, \
+                   ImageOutput(None, None, show=True) as imout:
             async for _, xs in reader:
                 if recipe_id and self.current_id != recipe_id:
                     break
@@ -280,6 +373,7 @@ class ActionClip(Processor):
                         self._bundle(texts[k], self.compare_image_text(z_image, z_texts[k])[0]) 
                         for k in out_keys
                     ])
+                    imout.output()
 
     def encode_text(self, texts, prompt_format=None):
         '''Encode text prompts. Returns formatted prompts and encoded CLIP text embeddings.'''
@@ -305,8 +399,6 @@ class ActionClip(Processor):
 
 
 
-
-
 class BaseRecorder(Processor):
     class Writer(Context):
         def __init__(self, name, store_dir, **kw):
@@ -323,7 +415,7 @@ class BaseRecorder(Processor):
 
     recording_id = None
 
-    async def call_async(self, streams=None, recording_id=None, replay=None, fullspeed=None, store_dir=None, **kw):
+    async def call_async(self, streams=None, recording_id=None, replay=None, fullspeed=None, progress=True, store_dir=None, **kw):
         store_dir = os.path.join(store_dir or self.STORE_DIR, recording_id or self.new_recording_id())
         os.makedirs(store_dir, exist_ok=True)
 
@@ -336,7 +428,7 @@ class BaseRecorder(Processor):
 
         writers = {}
         with contextlib.ExitStack() as stack:
-            async with StreamReader(self.api, recording_id=replay, streams=streams, fullspeed=fullspeed, raw=self.raw) as reader:
+            async with StreamReader(self.api, recording_id=replay, streams=streams, progress=progress, fullspeed=fullspeed, raw=self.raw) as reader:
                 async def _stream():
                     async for sid, t, x in reader:
                         if recording_id and self.recording_id != recording_id:
@@ -349,7 +441,6 @@ class BaseRecorder(Processor):
                         writers[sid].write(t, x)
 
                 await asyncio.gather(_stream(), reader.watch_replay())
-
 
 class RawRecorder(BaseRecorder):
     raw=True
@@ -506,4 +597,6 @@ if __name__ == '__main__':
         'audio': AudioRecorder,
         'json': JsonRecorder,
         'raw': RawRecorder,
+        'yolo': Yolo3D,
+        'clip': ActionClip,
     })

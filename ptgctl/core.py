@@ -28,6 +28,7 @@ class WebsocketStream:
     def __init__(self, *a, params=None, **kw):
         self.a, self.kw = a, kw
         self.params = params or {}
+        self.kw.setdefault('close_timeout', 10)
 
     async def __await__(self):
         await asyncio.sleep(1e-6)
@@ -37,13 +38,13 @@ class WebsocketStream:
         import websockets
         self.connect = websockets.connect(*self.a, **self.kw)
         self.ws = await self.connect.__aenter__()
-        await asyncio.sleep(1e-6)
         return self
     
-    async def __aexit__(self, *a):
-        await self.connect.__aexit__(*a)
-        self.connect = self.ws = None
-        await asyncio.sleep(1e-6)
+    async def __aexit__(self, c, e, tb):
+        from websockets.exceptions import ConnectionClosed
+        e = await self.connect.__aexit__(c, e, tb)
+        del self.connect, self.ws
+        return c and issubclass(c, ConnectionClosed)
 
     
 
@@ -76,6 +77,7 @@ class ReplayStream(WebsocketStream):
     
     async def __aenter__(self):
         self.pbars = {}
+        self.ts_se = {}
         return await super().__aenter__()
 
     async def __aexit__(self, *a):
@@ -85,10 +87,13 @@ class ReplayStream(WebsocketStream):
 
     async def progress(self):
         progress = json.loads(await self.ws.recv())
-        for sid, n in progress['updates']:
-            if sid not in self.pbars:
-                self.pbars[sid] = tqdm.tqdm(desc=sid)
-            self.pbars[sid].update(n)
+        if self.show_pbar:
+            for sid, n in progress['updates'].items():
+                if sid not in self.pbars:
+                    self.pbars[sid] = tqdm.tqdm(desc=sid, total=int(progress['durations'][sid]))
+                # self.pbars[sid].update(n)
+                self.pbars[sid].n = int(progress['current'][sid])
+                self.pbars[sid].refresh()
         return progress['active']
 
     async def done(self):
@@ -386,21 +391,9 @@ class API:
             ptgctl recordings replay coffee-test-1 main+depthlt --prefix "replay:"
 
             '''
-            # import tqdm, contextlib
             async with self.replay_connect(rec_id, stream_ids, prefix, fullspeed, interval) as c:
                 while await c.progress():
                     pass
-                # with contextlib.ExitStack() as stack:
-                #     pbars = {
-                #         sid: stack.enter_context(tqdm.tqdm(desc=sid, position=i)) 
-                #         for i, sid in enumerate(stream_ids.split('+'))
-                #     }
-                #     while True:
-                #         progress = json.loads(await conn.ws.recv())
-                #         for sid, n in progress['updates']:
-                #             pbars[sid].update(n)
-                #         if not progress['active']:
-                #             break
 
         replay_async = replay.asyncio
 
