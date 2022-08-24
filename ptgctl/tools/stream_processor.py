@@ -204,11 +204,9 @@ class Processor:
     def call_async(self, streams):
         raise NotImplementedError
 
-    @classmethod
     @maybe_profile
     @async2sync
-    async def run(cls, *a, continuous=False, **kw):
-        self = cls()
+    async def run(self, *a, continuous=False, **kw):
         while True:
             try:
                 await self.call_async(*a, **kw)
@@ -298,7 +296,7 @@ class Yolo3D(Processor):
                     # ])
                     imout.output(draw_boxes(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), xyxy, [
                         f'{self.labels[l]} {c:.0%} [{x:.0f},{y:.0f},{z:.0f}]' 
-                        for l, c, (x,y,z) in zip(class_ids, confs, xyzc)
+                        for l, c, (x,y,z) in zip(class_ids[valid], confs[valid], xyzc[valid])
                     ]))
 
             await asyncio.gather(_stream(), reader.watch_replay())
@@ -351,7 +349,9 @@ class ActionClip(Processor):
                 return rec_id
             await asyncio.sleep(delay)
 
-    async def run_while_active(self, recipe_id, , prefix=None, replay=None, fullspeed=None):
+    async def call_async(self, recipe_id, replay=None, fullspeed=None):
+        self.current_id = recipe_id
+        import torch
         assert recipe_id, "You must provide a recipe ID, otherwise we have nothing to compare"
         # load the recipe from the api
         recipe = self.api.recipes.get(recipe_id)
@@ -359,32 +359,33 @@ class ActionClip(Processor):
         z_texts = {k: self.encode_text(recipe[k], prompt) for k, prompt in self.prompts.items()}
 
         out_keys = set(texts)
-        out_sids = [f'{prefix or ""}{self.output_prefix}:{k}' for k in out_keys]
-        async with StreamReader(self.api, [f'{prefix or ""}main'], recording_id=replay, fullspeed=fullspeed) as reader, \
+        out_sids = [f'{replay or ""}{self.output_prefix}:{k}' for k in out_keys]
+        async with StreamReader(self.api, ['main'], recording_id=replay, fullspeed=fullspeed) as reader, \
                    StreamWriter(self.api, out_sids, test=True) as writer, \
                    ImageOutput(None, None, show=True) as imout:
-            async for _, xs in reader:
+            async for _, t, d in reader:
                 if recipe_id and self.current_id != recipe_id:
                     break
-                for t, d in xs:
-                    # encode the image and compare to text queries
-                    z_image = self.encode_image(d['image'])
-                    writer.write([
-                        self._bundle(texts[k], self.compare_image_text(z_image, z_texts[k])[0]) 
-                        for k in out_keys
-                    ])
-                    imout.output()
+                # encode the image and compare to text queries
+                im = d['image']
+                z_image = self.encode_image(im)
+                sims = {k: self.compare_image_text(z_image, z_texts[k])[0] for k in out_keys}
+                # await writer.write([self._bundle(texts[k], sims[k]) for k in out_keys])
+                imout.output(draw_text_list(np.ascontiguousarray(im), [
+                    f'{texts[k][i]} ({sims[k][i]:.0%})' 
+                        for k in out_keys for i in torch.topk(sims[k], 3, dim=-1)[1].tolist()
+                ]))
 
-    def encode_text(self, texts, prompt_format=None):
+    def encode_text(self, texts, prompt_format=None, return_texts=False):
         '''Encode text prompts. Returns formatted prompts and encoded CLIP text embeddings.'''
         toks = self.tokenize([prompt_format.format(x) for x in texts] if prompt_format else texts).to(self.device)
         z = self.model.encode_text(toks)
         z /= z.norm(dim=-1, keepdim=True)
-        return z, texts
+        return (z, texts) if return_texts else z
 
     def encode_image(self, image):
         '''Encode image to CLIP embedding.'''
-        image = self.preprocess(Image.fromarray(image)).unsqueeze(0).to(device)
+        image = self.preprocess(Image.fromarray(image)).unsqueeze(0).to(self.device)
         z_image = self.model.encode_image(image)
         z_image /= z_image.norm(dim=-1, keepdim=True)
         return z_image
