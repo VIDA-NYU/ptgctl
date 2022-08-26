@@ -25,14 +25,14 @@ LOCAL_URL = 'http://localhost:7890'
 
 class WebsocketStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
+    connect = ws = None
     def __init__(self, *a, params=None, **kw):
         self.a, self.kw = a, kw
         self.params = params or {}
         self.kw.setdefault('close_timeout', 10)
 
     async def __await__(self):
-        await asyncio.sleep(1e-6)
-        return await self.connect
+        return await self.connect if self.connect is not None else None
 
     async def __aenter__(self):
         import websockets
@@ -42,15 +42,20 @@ class WebsocketStream:
     
     async def __aexit__(self, c, e, tb):
         from websockets.exceptions import ConnectionClosed
-        e = await self.connect.__aexit__(c, e, tb)
-        del self.connect, self.ws
+        if self.connect is not None:
+            await self.connect.__aexit__(c, e, tb)
+        # del self.connect, self.ws
+        self.connect = self.ws = None
         return c and issubclass(c, ConnectionClosed)
 
     
 
 class DataStream(WebsocketStream):
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
+    def __init__(self, sid, *a, **kw):
+        if isinstance(sid, (list, str)):
+            sid = '+'.join(sid)
+            kw.setdefault('batch', True)
+        super().__init__(sid, *a, **kw)
         self.batch = self.params.get('batch')
         self.ack = self.params.get('ack')
 
@@ -78,14 +83,18 @@ class ReplayStream(WebsocketStream):
     async def __aenter__(self):
         self.pbars = {}
         self.ts_se = {}
+        self.running = True
         return await super().__aenter__()
 
     async def __aexit__(self, *a):
+        self.running = False
         for p in self.pbars.values():
             p.close()
         return await super().__aexit__(*a)
 
     async def progress(self):
+        if not self.ws:
+            return
         progress = json.loads(await self.ws.recv())
         if self.show_pbar:
             for sid, n in progress['updates'].items():
@@ -468,8 +477,8 @@ class API:
         def get(self) -> dict:
             return self._get('sessions').json()
 
-        def current_recipe(self, info=None) -> str|dict:
-            return self._get('sessions', 'recipe', params={'info': info}).json()
+        def current_recipe(self) -> str:
+            return self._get('sessions', 'recipe').json()
 
         def start_recipe(self, recipe_id: str) -> List[bool]:  # id was set, step was set
             return self._put('sessions', 'recipe', recipe_id).json()
@@ -477,11 +486,11 @@ class API:
         def stop_recipe(self) -> bool:
             return self._delete('sessions', 'recipe').json()
 
-        def get_recipe_step(self) -> int:
-            return self._get('sessions', 'recipe/step').json()
+        # def get_recipe_step(self) -> int:
+        #     return self._get('sessions', 'recipe/step').json()
 
-        def set_recipe_step(self, step_id: int) -> bool:
-            return self._put('sessions', 'recipe/step', step_id).json()
+        # def set_recipe_step(self, step_id: int) -> bool:
+        #     return self._put('sessions', 'recipe/step', step_id).json()
 
         # def ls(self) -> list:
         #     '''Get all sessions.'''
@@ -565,7 +574,7 @@ class API:
 
     # data over async websockets
 
-    def data_pull_connect(self, stream_id: str, **kw) -> 'WebsocketStream':
+    def data_pull_connect(self, stream_id: str, **kw) -> 'DataStream':
         '''Connect to the server and send data over an asynchronous websocket.
         
         .. code-block:: python
@@ -577,7 +586,7 @@ class API:
         '''
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
-    def data_push_connect(self, stream_id: str, **kw) -> 'WebsocketStream':
+    def data_push_connect(self, stream_id: str, **kw) -> 'DataStream':
         '''Connect to the server and send data over an asynchronous websocket.
         
         .. code-block:: python
