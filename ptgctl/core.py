@@ -52,9 +52,6 @@ class WebsocketStream:
 
 class DataStream(WebsocketStream):
     def __init__(self, sid, *a, **kw):
-        if isinstance(sid, (list, str)):
-            sid = '+'.join(sid)
-            kw.setdefault('batch', True)
         super().__init__(sid, *a, **kw)
         self.batch = self.params.get('batch')
         self.ack = self.params.get('ack')
@@ -588,6 +585,9 @@ class API:
                     for sid, ts, data in await ws.aread():
                         img = np.array(Image.open(io.BytesIO(data)))  # rgb array
         '''
+        if isinstance(stream_id, (list, tuple)):
+            stream_id = '+'.join(stream_id)
+            kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
     def data_push_connect(self, stream_id: str, **kw) -> 'DataStream':
@@ -607,6 +607,9 @@ class API:
                     # TODO: support timestamps + multiple sid
                     await ws.awrite(data)
         '''
+        if isinstance(stream_id, (list, tuple)):
+            stream_id = '+'.join(stream_id)
+            kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 
     # tools
