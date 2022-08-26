@@ -433,9 +433,11 @@ class API:
                 if os.path.isfile(recipe):
                     recipe = open(recipe, 'r').read()
                 recipe = json.loads(recipe)
+            if '_id' not in recipe:
+                recipe['_id'] = recipe['name'].lower().replace(' ', '')
             return self._post('recipes', json=recipe).json()
 
-        def update(self, id: str, recipe: dict|str) -> bool:
+        def update(self, id: str, recipe: dict|str, **extra) -> bool:
             '''Update a recipe.
             
             Arguments:
@@ -444,12 +446,14 @@ class API:
                     name (str): The human-readable name of the recipe
                     ingredients (list[str]): The recipe ingredients
                     tools (list[str]): The recipe tools
-                    instructions (list[str]): The recipe instruction steps.
+                    instructions (list[str]): The recipe instruction steps. These are the full text descriptions.
+                    steps (list[str]): The recipe steps as they should be ingested by the model.
             '''
             if isinstance(recipe, str):
                 if os.path.isfile(recipe):
                     recipe = open(recipe, 'r').read()
                 recipe = json.loads(recipe)
+            recipe.update(extra)
             return self._put('recipes', id, json=recipe).json()
 
         def delete(self, id: str) -> bool:
