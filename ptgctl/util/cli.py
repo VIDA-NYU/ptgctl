@@ -36,19 +36,36 @@ class BoundModule:
 
     '''
     _COPY_OVER = ['__doc__', '__name__', '__file__', '__package__']
-    def __init__(self, parent, wrapped):
+    def __init__(self, parent, get_module, lazy=True):
         self._self = parent
-        self._wrapped = wrapped
-        keys = getattr(wrapped, '__bind__', None) or getattr(wrapped, '__all__', None) or dir(wrapped)
-        candidates = {k: getattr(wrapped, k, None) for k in keys}
-        self._public = {
-            name: f for name, f in candidates.items() 
-            if self._is_public(f)
-        }
+        self._get_module = get_module
+        self._loaded = False
+        if not lazy:
+            self._load_module()
+
+    def _load_module(self, reload=False):
+        if not reload and self._loaded:
+            return  # be idempotent
+
+        self._wrapped = wrapped = self._get_module(self._self)
+        keys = (
+            getattr(wrapped, '__bind__', None) or 
+            getattr(wrapped, '__all__', None) or 
+            dir(wrapped))
+        self._public = {}
+        for k in keys:
+            try:
+                f = getattr(wrapped, k)
+                if self._is_public(f):
+                    self._public[k] = f
+            except AttributeError:
+                pass
+
         self._dir = list(self._public)
         # mimic - idk
         for k in self._COPY_OVER:
             setattr(self, k, getattr(self._wrapped, k))
+        self._loaded = True
 
     def _is_public(self, func):
         return is_public_func(func) and belongs_to_module(self._wrapped, func)
@@ -57,38 +74,43 @@ class BoundModule:
         return f'{self.__class__.__name__}({self.__name__}, {self._dir})'        
 
     def __dir__(self):
+        self._load_module()
         return self._dir
 
     def __getattr__(self, name):
+        self._load_module()
         if name not in self._public:
             raise AttributeError(name)
-        return self._public[name].__get__(self._self)
+        x = self._public[name]
+        return x.__get__(self._self) if hasattr(x, '__get__') else x
 
+    @classmethod
+    def _bind(cls, get_module):
+        '''Helper for bound modules. This will cache per-class for future use.
+        
+        .. code-block:: python
 
+            class A:
+                @bound_module
+                def greetings(self):
+                    import greetings
+                    return greetings
+        '''
+        attr = f'__{get_module.__name__}'
+        @property
+        @functools.wraps(get_module)
+        def inner(self):
+            # only create the bound module once
+            try:
+                return getattr(self, attr)
+            except AttributeError:
+                bm = cls(self, get_module)
+                setattr(self, attr, bm)
+                return bm
+        return inner
 
-def bound_module(get_module):
-    '''Helper for bound modules. This will cache per-class for future use.
-    
-    .. code-block:: python
+bound_module = BoundModule._bind
 
-        class A:
-            @bound_module
-            def greetings(self):
-                import greetings
-                return greetings
-    '''
-    name = f'__{get_module.__name__}'
-    @property
-    @functools.wraps(get_module)
-    def inner(self):
-        # only create the bound module once
-        try:
-            return getattr(self, name)
-        except AttributeError:
-            bm = BoundModule(self, get_module(self))
-            setattr(self, name, bm)
-            return bm
-    return inner
 
 
 def is_public_func(func):
