@@ -44,6 +44,7 @@ class ReId:
         valid = dist < self.MIN_DEPTH_POINT_DISTANCE
 #        boxes = boxes[valid]
 #        boxes_xyz_world = boxes_xyz_world[valid]
+#Todo: replace this with Detic:
         for item in range(len(boxes)):
             if int(boxes[item][5]) == 61 or int(boxes[item][5]) == 4 or int(boxes[item][5]) == 62 or int(boxes[item][5]) == 29:
                 boxes[item][5] = 45
