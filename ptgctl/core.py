@@ -46,7 +46,9 @@ class WebsocketStream:
             await self.connect.__aexit__(c, e, tb)
         # del self.connect, self.ws
         self.connect = self.ws = None
-        return c and issubclass(c, ConnectionClosed)
+        if c and issubclass(c, ConnectionClosed):
+            log.warning(f'{c.__name__}: {e}')
+            return True
 
     
 
