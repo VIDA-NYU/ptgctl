@@ -92,7 +92,12 @@ async def json(api, stream_id, **kw):
         while True:
             for sid, ts, data in await ws.recv_data():
                 print(f'{sid}: {ts}')
-                print(json_.loads(data.decode('utf-8')))
+                try:
+                    print(json_.loads(data.decode('utf-8')))
+                except json_.decoder.JSONDecodeError:
+                    import traceback
+                    traceback.print_exc()
+                    print("could not decode:", data)
 
 
 def test(api, stream_id=None, **kw):

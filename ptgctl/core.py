@@ -67,7 +67,7 @@ class DataStream(WebsocketStream):
     async def send_data(self, data):
         offsets, entries = util.pack_entries([data] if not self.batch else data)
         if self.batch:
-            await self.ws.send(','.join(map(str, offsets)))
+            await self.ws.send(json.dumps(offsets))
         await self.ws.send(bytes(entries))
         if self.ack:
             await self.ws.recv()  # ack
