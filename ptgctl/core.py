@@ -590,6 +590,7 @@ class API:
         '''
         if isinstance(stream_id, (list, tuple)):
             stream_id = '+'.join(stream_id)
+        if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
@@ -612,6 +613,7 @@ class API:
         '''
         if isinstance(stream_id, (list, tuple)):
             stream_id = '+'.join(stream_id)
+        if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 

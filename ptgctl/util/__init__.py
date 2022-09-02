@@ -13,9 +13,11 @@ from .token import *
 def pack_entries(data: list) -> tuple:
     '''Pack multiple byte objects into a single bytearray with numeric offsets.'''
     entries = bytearray()
-    offsets = []
+    offsets = [0]
+    offset = 0
     for d in [data] if not isinstance(data, (list, tuple)) else data:
-        offsets.append(len(d))
+        offset += len(d)
+        offsets.append(offset)
         entries += d
     return offsets, entries
 
