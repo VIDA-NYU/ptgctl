@@ -100,6 +100,21 @@ async def json(api, stream_id, **kw):
                     print("could not decode:", data)
 
 
+
+@util.async2sync
+@util.interruptable
+async def update(api, stream_id, **kw):
+    from ptgctl import holoframe
+    import tqdm
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        pbar = tqdm.tqdm()
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                pbar.set_description(f'{sid}: {util.parse_time(ts).strftime("%c")}')
+                pbar.update()
+
+
+
 def test(api, stream_id=None, **kw):
     if not stream_id:
         import json
