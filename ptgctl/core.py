@@ -453,6 +453,7 @@ class API:
                 if os.path.isfile(recipe):
                     recipe = open(recipe, 'r').read()
                 recipe = json.loads(recipe)
+            assert isinstance(recipe, dict), 'recipe must be a dict'
             recipe.update(extra)
             return self._put('recipes', id, json=recipe).json()
 
