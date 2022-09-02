@@ -2,6 +2,7 @@
 
 '''
 import io
+import json as json_
 import time
 import asyncio
 import datetime
@@ -90,7 +91,13 @@ async def json(api, stream_id, **kw):
     async with api.data_pull_connect(stream_id, **kw) as ws:
         while True:
             for sid, ts, data in await ws.recv_data():
-                cli_format.yamltable([sid, ts, data])
+                print(f'{sid}: {ts}')
+                try:
+                    print(json_.loads(data.decode('utf-8')))
+                except json_.decoder.JSONDecodeError:
+                    import traceback
+                    traceback.print_exc()
+                    print("could not decode:", data)
 
 
 def test(api, stream_id=None, **kw):
