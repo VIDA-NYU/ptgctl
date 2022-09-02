@@ -55,8 +55,77 @@ class Points3D:
             np.ndarray: distance in xy space between the photo and depth point. (n_points,)
                 you can use this to filter out points that are too far away.
         '''
-        xy_world, xy_pv, dists = transform_points2world_via_closest_depth(xy, self.xyz_depth_pv, self.xyz_depth_world)
+        xy_world, xy_pv, dists = transform_points2world_via_closest_depth(
+            xy, self.xyz_depth_pv, self.xyz_depth_world)
         return xy_world, dists
+
+    def _transform_box(self, xyxy, pts=None, ref=np.array([0.5, 0.5])):
+        '''
+
+        Arguments:
+            xyxy (np.ndarray): The bounding box coordinates in the original image space.
+            pts (np.ndarray): The reference points you want to 
+            ref (np.ndarray): The point you want to use for depth estimation
+
+        Returns:
+            np.ndarray: The points in 3d space. (len(xyxy), 3)
+            np.ndarray: distance in xy space between the photo and depth point. (len(xyxy),)
+                you can use this to filter out points that are too far away.
+            np.ndarray: [len(pts), len(xyxy), 2] Any additional points you want to calculate, relative to the 
+                box e.g. to calculate the top center, provide: `pts=np.array([[0.5, 0]])`
+
+        Example:
+            assert xyxy.shape == (10, 4)
+            ref = np.array([0.5, 0.5])
+            pts = np.array([
+                [0, 0],
+                [1, 0],
+                [0, 1],
+                [1, 1],
+            ])
+            self._transform_box(xyxy, [0.5, 0.5], refs)
+        '''
+        xy1 = xyxy[:, :2]
+        xy2 = xyxy[:, 2:4]
+        diff = xy2 - xy1
+        xyc = xy1 + diff*np.asarray(ref)  # get depth reference point
+        xyzc_world, xyz_pv, dists = transform_points2world_via_closest_depth(
+            xyc, self.xyz_depth_pv, self.xyz_depth_world)
+        
+        if pts is not None:
+            # compute extra points on the image plane
+            # [1, nbox, 2] + [npt, 1, 2]
+            xypts = xy1[None] + diff*np.asarray(pts)[:, None]
+            depth = np.broadcast_to(xyz_pv[None,:,2], (len(xypts), len(xyz_pv)))
+            xyz_pts_world = transform_image2world(xypts, depth, self.pv2world)
+        else:
+            xyz_pts_world = np.zeros((len(xyxy), 0, 2))
+        return xyzc_world, dists, xyz_pts_world
+
+    def transform_center(self, xyxy):
+        '''Transform points from 2d image space to 3d world space.
+        
+        Arguments:
+            xy (np.ndarray): The box coordinates in image space. Shape should be [n_points, xy]
+
+        Returns:
+            np.ndarray: The points in 3d space. (n_points, 3)
+            np.ndarray: distance in xy space between the photo and depth point. (n_points,)
+                you can use this to filter out points that are too far away.
+        '''
+        xyzc_world, dists, _ = self._transform_box(xyxy)
+        return xyzc_world, dists
+
+    def transform_center_top(self, xyxy):
+        xyzc_world, dists, xyz_pts_world = self._transform_box(xyxy, np.array([[0.5, 0]]))
+        return xyzc_world, xyz_pts_world[0], dists
+
+    def transform_corners(self, xyxy):
+        xyzc_world, dists, xyz_pts_world = self._transform_box(xyxy, np.array([
+            [0, 0], [1, 0],
+            [0, 1], [1, 1],
+        ]))
+        return xyzc_world, xyz_pts_world, dists
 
     def transform_box(self, xyxy, return_corners=True):
         '''Transform points from 2d image space to 3d world space.
@@ -69,18 +138,10 @@ class Points3D:
             np.ndarray: distance in xy space between the photo and depth point. (n_points,)
                 you can use this to filter out points that are too far away.
         '''
-        xy1 = xyxy[:, :2]
-        xy2 = xyxy[:, 2:4]
-        xyc = (xy2 + xy1) / 2
-        xyzc_world, xyz_pv, dists = transform_points2world_via_closest_depth(
-            xyc, self.xyz_depth_pv, self.xyz_depth_world)
         if not return_corners:
-            return xyzc_world, dists
-        xyz_tl_world = transform_image2world(xy1, xyz_pv[:, 2], self.pv2world)
-        xyz_br_world = transform_image2world(xy2, xyz_pv[:, 2], self.pv2world)
-        xyz_tr_world = transform_image2world(np.concatenate([xy2[:, 0][:,None], xy1[:, 1][:,None]], axis=1), xyz_pv[:, 2], self.pv2world)
-        xyz_bl_world = transform_image2world(np.concatenate([xy1[:, 0][:,None], xy2[:, 1][:,None]], axis=1), xyz_pv[:, 2], self.pv2world)
-        return xyz_tl_world, xyz_br_world, xyz_tr_world, xyz_bl_world, xyzc_world, dists
+            return self.transform_center(xyxy)
+        xyzc_world, xyz_pts_world, dists = self.transform_corners(xyxy)
+        return tuple(xyz_pts_world) + (xyzc_world, dists)
 
 
 
@@ -143,9 +204,9 @@ def transform_points2world_via_closest_depth(pts, xyz_pv, xyz_depth_world):
     return xyz_depth_world[closest], xyz_pv[closest], dists
 
 def transform_image2world(xy_pv, depth, pv2world):
-    xy_pv = np.concatenate([xy_pv, depth[:, None], np.ones((len(xy_pv), 1))], axis=1)
+    xy_pv = np.concatenate([xy_pv, depth[..., None], np.ones(xy_pv.shape[:-1]+(1,))], axis=-1)
     xy_world = xy_pv @ pv2world
-    return xy_world[:, :3]
+    return xy_world[...,:3]
 
 def find_close(loc, xyz_pv, xyz_world, buffer=7, top=4):
     # find the closest points within some threshold
@@ -162,60 +223,52 @@ def find_close(loc, xyz_pv, xyz_world, buffer=7, top=4):
 import asyncio
 
 
-async def _main(**kw):
+async def _main(prefix='', **kw):
     import torch
     import ptgctl
     import ptgctl.holoframe
 
     model = torch.hub.load('ultralytics/yolov5', 'yolov5s', device='cpu')
 
-    kw.setdefault('last_entry_id', 0)
-
-    api = ptgctl.CLI(local=False)
-    streams = ['main', 'depthlt']
+    api = ptgctl.API(**kw)
+    prefix = prefix or ''
+    streams = ['main', 'depthlt', 'depthltCal']
+    streams = [f'{prefix}{k}' for k in streams]
 
     data = ptgctl.holoframe.load_all(api.data('depthltCal'))
-    lut, T_rig2cam = ptgctl.holoframe.unpack(data, [
-        'depthltCal.lut', 
-        'depthltCal.rig2cam', 
-    ])
 
     async with api.data_pull_connect('+'.join(streams), **kw) as ws:
         while True:
-            data = await ws.recv_data()
-            data = ptgctl.holoframe.load_all(data)
-
-            (
-                rgb, depth,
-                T_rig2world, T_pv2world, 
-                focalX, focalY, principalX, principalY,
-            ) = ptgctl.holoframe.unpack(
-                data, [
-                'main.image', 
-                'depthlt.image', 
-                'depthlt.rig2world', 
-                'main.cam2world', 
-                'main.focalX', 
-                'main.focalY', 
-                'main.principalX',
-                'main.principalY',
-            ])
-
+            data.update(ptgctl.holoframe.load_all(await ws.recv_data()))
+            try:
+                main, depth, depthcal = [data[k] for k in streams]
+            except KeyError as e:
+                print('key error', e)
+                await asyncio.sleep(0.2)
+                continue
             pts3d = Points3D(
-                rgb, depth, lut, 
-                T_rig2world, T_rig2cam, T_pv2world, 
-                [focalX, focalY], 
-                [principalX, principalY])
+                main['image'], depth['image'], depthcal['lut'], 
+                depth['rig2world'], depthcal['rig2cam'], main['cam2world'], 
+                [main['focalX'], main['focalY']], 
+                [main['principalX'], main['principalY']])
 
-            results = model(rgb)
+            results = model(main['image'])
             boxes = results.xywh[0].numpy()
 
-            boxes_xyz_world, dist = pts3d.transform(boxes[:, :2])
+            xyz_top, xyz_center, dist = pts3d.transform_center_top(boxes)
             valid = dist < 7  # make sure the points aren't too far
             boxes = boxes[valid]
-            boxes_xyz_world = boxes_xyz_world[valid]
+            xyz_top = xyz_top[valid]
+            xyz_center = xyz_center[valid]
+            for b, xc, xt in zip(boxes, xyz_center, xyz_top):
+                print(b, xc, xt)
+            print()
 
             
 
 def main(**kw):
     return asyncio.run(_main(**kw))
+
+if __name__ == '__main__':
+    import fire
+    fire.Fire(main)

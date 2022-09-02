@@ -67,7 +67,7 @@ class DataStream(WebsocketStream):
     async def send_data(self, data):
         offsets, entries = util.pack_entries([data] if not self.batch else data)
         if self.batch:
-            await self.ws.send(','.join(map(str, offsets)))
+            await self.ws.send(json.dumps(offsets))
         await self.ws.send(bytes(entries))
         if self.ack:
             await self.ws.recv()  # ack
@@ -104,8 +104,8 @@ class ReplayStream(WebsocketStream):
                 self.pbars[sid].refresh()
         return progress['active']
 
-    async def done(self):
-        while await self.progress():
+    async def done(self, done=None):
+        while await self.progress() and (done is None or done.is_set()):
             pass
 
 
@@ -119,12 +119,15 @@ class API:
     _COOKIE_FILE = '~/.ptg.cjar'
     _token = None
 
-    def __init__(self, url: str|None=None, token=None, username: str|None=None, password: str|None=None, local: bool=False):
+    def __init__(self, url: str|None=None, token=None, username: str|None=None, password: str|None=None, local: bool=False, should_log=True, should_log_ws=True):
         url = url or (LOCAL_URL if local else URL)
         # get url and make sure that it has a protocol on it.
         self.url = url = url.rstrip('/')
         secure = True if url.startswith('https://') else False if url.startswith('http://') else None
         uri = url.split('://', 1)[1] if secure is not None else url
+
+        self.should_log = should_log
+        self.should_log_ws = should_log_ws
 
         # get websocket url
         self._wsurl = f"ws{'s' if secure else ''}://{uri}"
@@ -205,12 +208,14 @@ class API:
             kw['params'] = {k: v for k, v in params.items() if k and v is not None}
 
         # make the request and time it
-        log.info('request: %s %s', method, url)
-        log.debug('headers: %s', headers)
-        log.debug('request args: %s', kw)
+        if self.should_log:
+            log.info('request: %s %s', method, url)
+            log.debug('headers: %s', headers)
+            log.debug('request args: %s', kw)
         t0 = time.time()
         r = self.sess.request(method, url, headers=headers, **kw)
-        log.info('%d took %.3g secs', r.status_code, time.time() - t0)
+        if self.should_log:
+            log.info('%d took %.3g secs', r.status_code, time.time() - t0)
         if raises:
             r.raise_for_status()
         return r
@@ -467,6 +472,7 @@ class API:
                 if os.path.isfile(recipe):
                     recipe = open(recipe, 'r').read()
                 recipe = json.loads(recipe)
+            assert isinstance(recipe, dict), 'recipe must be a dict'
             recipe.update(extra)
             return self._put('recipes', id, json=recipe).json()
 
@@ -595,6 +601,7 @@ class API:
         '''
         if isinstance(stream_id, (list, tuple)):
             stream_id = '+'.join(stream_id)
+        if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
@@ -617,6 +624,7 @@ class API:
         '''
         if isinstance(stream_id, (list, tuple)):
             stream_id = '+'.join(stream_id)
+        if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
         return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 
