@@ -96,7 +96,6 @@ class Points3D:
             # compute extra points on the image plane
             # [1, nbox, 2] + [npt, 1, 2]
             xypts = xy1[None] + diff*np.asarray(pts)[:, None]
-            print(xypts)
             depth = np.broadcast_to(xyz_pv[None,:,2], (len(xypts), len(xyz_pv)))
             xyz_pts_world = transform_image2world(xypts, depth, self.pv2world)
         else:
