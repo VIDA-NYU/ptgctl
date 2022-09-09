@@ -597,6 +597,8 @@ class API:
             stream_id = '+'.join(stream_id)
         if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
+        if kw.get('last_entry_id') is True:
+            kw['last_entry_id'] = '-'
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
     def data_push_connect(self, stream_id: str, **kw) -> 'DataStream':
