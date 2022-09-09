@@ -86,14 +86,27 @@ def local_video(api=None, src=0, pos=0, width=0.3, fps=40):
 @util.async2sync
 @util.interruptable
 async def json(api, stream_id, **kw):
-    from ptgctl import holoframe
-    from ptgctl.util import cli_format
     async with api.data_pull_connect(stream_id, **kw) as ws:
         while True:
             for sid, ts, data in await ws.recv_data():
                 print(f'{sid}: {ts}')
                 try:
                     print(json_.loads(data.decode('utf-8')))
+                except json_.decoder.JSONDecodeError:
+                    import traceback
+                    traceback.print_exc()
+                    print("could not decode:", data)
+
+
+@util.async2sync
+@util.interruptable
+async def raw(api, stream_id, utf=False, **kw):
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                print(f'{sid}: {ts}')
+                try:
+                    print(data.decode('utf-8') if utf else data)
                 except json_.decoder.JSONDecodeError:
                     import traceback
                     traceback.print_exc()
