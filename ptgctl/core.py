@@ -165,6 +165,12 @@ class API:
     @token.setter
     def token(self, token):
         self._token = util.Token(token)
+
+    def upgrade(self):
+        import subprocess
+        d = os.path.dirname(__file__)
+        print('git pull:', d)
+        subprocess.run(['git', '-C', d, 'pull'], stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
     
 
     def login(self, username: str, password: str):
