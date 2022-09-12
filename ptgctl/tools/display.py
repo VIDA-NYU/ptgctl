@@ -19,7 +19,7 @@ async def imshow(api, stream_id, delay=1, **kw):
     '''Show a video stream from the API.'''
     import cv2
     # from .. import holoframe
-    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, **kw) as ws:
+    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, ack=True, **kw) as ws:
         t0 = time.time()
         i = 0
         last_epoch = time.time()
@@ -86,8 +86,6 @@ def local_video(api=None, src=0, pos=0, width=0.3, fps=40):
 @util.async2sync
 @util.interruptable
 async def json(api, stream_id, **kw):
-    from ptgctl import holoframe
-    from ptgctl.util import cli_format
     async with api.data_pull_connect(stream_id, **kw) as ws:
         while True:
             for sid, ts, data in await ws.recv_data():
@@ -98,6 +96,36 @@ async def json(api, stream_id, **kw):
                     import traceback
                     traceback.print_exc()
                     print("could not decode:", data)
+
+
+@util.async2sync
+@util.interruptable
+async def raw(api, stream_id, utf=False, **kw):
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                print(f'{sid}: {ts}')
+                try:
+                    print(data.decode('utf-8') if utf else data)
+                except json_.decoder.JSONDecodeError:
+                    import traceback
+                    traceback.print_exc()
+                    print("could not decode:", data)
+
+
+
+@util.async2sync
+@util.interruptable
+async def update(api, stream_id, **kw):
+    from ptgctl import holoframe
+    import tqdm
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        pbar = tqdm.tqdm()
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                pbar.set_description(f'{sid}: {util.parse_time(ts).strftime("%c")}')
+                pbar.update()
+
 
 
 def test(api, stream_id=None, **kw):

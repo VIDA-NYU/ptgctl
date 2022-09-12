@@ -62,6 +62,8 @@ class DataStream(WebsocketStream):
         await asyncio.sleep(1e-6)
         offsets = json.loads(await self.ws.recv())
         content = await self.ws.recv()
+        if self.ack:
+            await self.ws.send(b'')  # ack
         return util.unpack_entries(offsets, content)
 
     async def send_data(self, data):
@@ -165,6 +167,12 @@ class API:
     @token.setter
     def token(self, token):
         self._token = util.Token(token)
+
+    def upgrade(self):
+        import subprocess
+        d = os.path.dirname(__file__)
+        print('git pull:', d)
+        subprocess.run(['git', '-C', d, 'pull'], stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
     
 
     def login(self, username: str, password: str):
@@ -597,6 +605,8 @@ class API:
             stream_id = '+'.join(stream_id)
         if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
+        if kw.get('last_entry_id') is True:
+            kw['last_entry_id'] = '-'
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
     def data_push_connect(self, stream_id: str, **kw) -> 'DataStream':
