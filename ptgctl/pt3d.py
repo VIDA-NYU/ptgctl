@@ -11,7 +11,7 @@ class Points3D:
     '''Given the Hololens image, depth, and spatial data, convert 2d points to 3d points.
     
     Arguments:
-        rgb (np.ndarray): The rgb image. [height, width, channels]
+        rgb (tuple[height, width]): The shape of the image. [height, width]
         depth (np.ndarray): The depth image. [height, width]
         lut (np.ndarray): The depth point lookup table. [n_points, xyz coords]
         T_rig2world (np.ndarray): Spatial transformation from rig space to world space. [4, 4]
@@ -30,7 +30,7 @@ class Points3D:
         self.pv2world = T_pv2world
         
         # transform depth into world and image coordinates
-        H, W = rgb.shape[:2]
+        H, W = rgb.shape[:2] if isinstance(rgb, np.ndarray) else rgb
         xyz_depth_cam = transform_magnitude2cam_space(depth, lut)
         xyz_depth_world = transform_cam2world_space(xyz_depth_cam, T_rig2cam_depth, T_rig2world_depth)
         xyz_depth_pv = transform_depth2image_space(xyz_depth_world, T_pv2world, focal_length, principal_point)
