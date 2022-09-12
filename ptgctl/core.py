@@ -62,6 +62,8 @@ class DataStream(WebsocketStream):
         await asyncio.sleep(1e-6)
         offsets = json.loads(await self.ws.recv())
         content = await self.ws.recv()
+        if self.ack:
+            await self.ws.send(b'')  # ack
         return util.unpack_entries(offsets, content)
 
     async def send_data(self, data):

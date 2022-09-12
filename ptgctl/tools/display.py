@@ -19,7 +19,7 @@ async def imshow(api, stream_id, delay=1, **kw):
     '''Show a video stream from the API.'''
     import cv2
     # from .. import holoframe
-    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, **kw) as ws:
+    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, ack=True, **kw) as ws:
         t0 = time.time()
         i = 0
         last_epoch = time.time()
