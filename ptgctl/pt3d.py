@@ -33,7 +33,7 @@ class Points3D:
         H, W = rgb.shape[:2] if isinstance(rgb, np.ndarray) else rgb
         xyz_depth_cam = transform_magnitude2cam_space(depth, lut)
         xyz_depth_world = transform_cam2world_space(xyz_depth_cam, T_rig2cam_depth, T_rig2world_depth)
-        xyz_depth_pv = transform_depth2image_space(xyz_depth_world, T_pv2world, focal_length, principal_point)
+        xyz_depth_pv = transform_depth2image_space(xyz_depth_world, T_pv2world, focal_length, principal_point, W)
 
         # not sure why
         xyz_depth_pv[:, 0] = W - xyz_depth_pv[:, 0]
@@ -159,7 +159,7 @@ def transform_magnitude2cam_space(img, lut, min_scale=1e-6):
     height, width = img.shape
     assert len(lut) == width * height
     points = img.reshape((-1, 1)) * lut
-    return points[np.sum(points, axis=1) > min_scale] / 1000.
+    return points[np.sqrt(np.sum(points**2, axis=1)) > min_scale] / 1000.
 
 def transform_cam2world_space(points, rig2cam, rig2world):
     '''Transform points from camera space to world space via the intermediate rig space.
@@ -177,7 +177,7 @@ def transform_cam2world_space(points, rig2cam, rig2world):
     world_points = T_cam2world @ homog_points.T
     return world_points.T[:, :3]
 
-def transform_depth2image_space(points, pv2world, focal_length, principal_point):
+def transform_depth2image_space(points, pv2world, focal_length, principal_point, W):
     #Second step: Project from depth to pv via world space, and in return get the 3D location on world space
     homog_points = np.hstack((points, np.ones((len(points), 1))))
     points_pv = (np.linalg.inv(pv2world) @ homog_points.T).T[:, :3]
@@ -185,7 +185,7 @@ def transform_depth2image_space(points, pv2world, focal_length, principal_point)
         points_pv, 
         rvec=np.zeros(3), tvec=np.zeros(3), 
         cameraMatrix=np.array([
-            [focal_length[0], 0, principal_point[0]], 
+            [focal_length[0], 0, W-principal_point[0]], 
             [0, focal_length[1], principal_point[1]], 
             [0, 0, 1]
         ]),
