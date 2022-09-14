@@ -53,27 +53,41 @@ class WebsocketStream:
     
 
 class DataStream(WebsocketStream):
-    def __init__(self, sid, *a, **kw):
+    def __init__(self, sid, *a, ack_before=False, **kw):
         super().__init__(sid, *a, **kw)
         self.batch = self.params.get('batch')
         self.ack = self.params.get('ack')
+        self.ack_before = ack_before
+        self.need_to_ack = False
 
     async def recv_data(self):
-        await asyncio.sleep(1e-6)
+        if self.need_to_ack:
+            await self.ws.send(b'')  # ack
+            self.need_to_ack = False
+
         offsets = json.loads(await self.ws.recv())
         content = await self.ws.recv()
         if self.ack:
-            await self.ws.send(b'')  # ack
+            if self.ack_before:
+                self.need_to_ack = True
+            else:
+                await self.ws.send(b'')  # ack
         return util.unpack_entries(offsets, content)
 
-    async def send_data(self, data):
-        offsets, entries = util.pack_entries([data] if not self.batch else data)
+    async def send_data(self, data, ts=None):
+        offsets, entries = util.pack_entries([data] if not self.batch else data, ts)
         if self.batch:
             await self.ws.send(json.dumps(offsets))
         await self.ws.send(bytes(entries))
+
         if self.ack:
             await self.ws.recv()  # ack
         await asyncio.sleep(1e-6)
+
+    async def __aexit__(self, c, e, tb):
+        if self.need_to_ack and self.ws:
+            await self.ws.send(b'')  # ack
+        return await super().__aexit__(c, e, tb)
 
 
 class ReplayStream(WebsocketStream):
