@@ -8,17 +8,25 @@ from .token import *
 
 
 
+def aslist(x):
+    return x if isinstance(x, (list, tuple)) else [x] if x is not None else []
+
 # data parsing
 
-def pack_entries(data: list) -> tuple:
+def pack_entries(data: list, sid=None, ts=None) -> tuple:
     '''Pack multiple byte objects into a single bytearray with numeric offsets.'''
     entries = bytearray()
     offsets = [0]
     offset = 0
-    for d in [data] if not isinstance(data, (list, tuple)) else data:
+    for d in aslist(data):
         offset += len(d)
         offsets.append(offset)
         entries += d
+    if sid:
+        sid = aslist(sid)
+        ts = ts and aslist(ts)
+        assert len(sid) == len(offsets) and (not ts or len(ts) == len(offsets))
+        offsets = list(zip(sid, ts, offsets)) if ts else list(zip(sid, offsets))
     return offsets, entries
 
 def unpack_entries(offsets: list, content: bytes) -> list:
