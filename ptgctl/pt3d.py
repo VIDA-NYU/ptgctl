@@ -26,7 +26,8 @@ class Points3D:
             T_rig2cam_depth, 
             T_pv2world, 
             focal_length, 
-            principal_point):
+            principal_point,
+            generate_point_cloud = False):
         self.pv2world = T_pv2world
         
         # transform depth into world and image coordinates
@@ -43,6 +44,14 @@ class Points3D:
             ((0 <= xyz_depth_pv[:, 1]) & (xyz_depth_pv[:, 1] < H)))
         self.xyz_depth_pv = xyz_depth_pv[valid_points]
         self.xyz_depth_world = xyz_depth_world[valid_points]
+        
+        if generate_point_cloud:
+            if not isinstance(rgb, np.ndarray):
+                print("To generate point cloud, pass rgb image as the parameter for Points3D")
+                return
+            xyz_depth_pv = np.floor(self.xyz_depth_pv).astype(int)
+            colors = rgb[xyz_depth_pv[:, 1], xyz_depth_pv[:, 0], :]
+            self.rgb = colors / 255.
 
     def transform_points(self, xy):
         '''Transform points from 2d image space to 3d world space.
