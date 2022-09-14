@@ -503,7 +503,7 @@ class API:
 
     # session
 
-    class sessions(util.Nest):
+    class session(util.Nest):
         '''Session management.'''
         def get(self) -> dict:
             return self._get('sessions').json()
@@ -511,68 +511,24 @@ class API:
         def current_recipe(self) -> str:
             return self._get('sessions', 'recipe').json()
 
+        def id(self) -> str:
+            return self._get('sessions', 'id').json()
+
         def start_recipe(self, recipe_id: str) -> List[bool]:  # id was set, step was set
             return self._put('sessions', 'recipe', recipe_id).json()
 
         def stop_recipe(self) -> bool:
             return self._delete('sessions', 'recipe').json()
 
-        # def get_recipe_step(self) -> int:
-        #     return self._get('sessions', 'recipe/step').json()
+        def step(self) -> int:
+            '''Get the current step.'''
+            return self._get('sessions/recipe/step').json()
 
-        # def set_recipe_step(self, step_id: int) -> bool:
-        #     return self._put('sessions', 'recipe/step', step_id).json()
+        def update_step(self, step: int) -> bool:
+            '''Set the current step.'''
+            return self._put('sessions/recipe/step', step).json()
 
-        # def ls(self) -> list:
-        #     '''Get all sessions.'''
-        #     return self._get('sessions').json()
-
-        # def get(self, id: str) -> dict:
-        #     '''Get a session by ID.
-            
-        #     Arguments:
-        #         id (str): The session ID.
-        #     '''
-        #     return self._get('sessions', id).json()
-
-        # def new(self, recipe_id: str, step_index: int=None):
-        #     '''Create a session.
-            
-        #     Arguments:
-        #         id (str): The session ID.
-        #     '''
-        #     return self._post('sessions', json=util.filternone({
-        #         'recipe_id': recipe_id,
-        #         'step_index': step_index,
-        #     })).json()
-
-        # def update(self, id, recipe_id=None, step_index=None) -> bool:
-        #     '''Update a session.
-            
-        #     Arguments:
-        #         id (str): The session ID.
-        #     '''
-        #     return self._put('sessions', id, json=util.filternone({
-        #         'recipe_id': recipe_id,
-        #         'step_index': step_index,
-        #     })).json()
-
-        # def delete(self, id: str) -> bool:
-        #     '''Delete a session.
-            
-        #     Arguments:
-        #         id (str): The session ID.
-        #     '''
-        #     return self._delete('sessions', id).json()
-
-        # def step(self, id: str) -> int:
-        #     '''Get the current step.'''
-        #     return self._get('sessions', id, 'step').json()
-
-        # def update_step(self, id: str, step: int=None) -> bool:
-        #     '''Set the current step.'''
-        #     return self._put('sessions', id, 'step', step).json()
-
+    sessions = session
 
     # data
 
