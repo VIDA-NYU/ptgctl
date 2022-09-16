@@ -310,6 +310,10 @@ class API:
         def current(self, info: bool|None=None) -> list:
             '''Get the current recording'''
             return self._get('recordings/current', params={'info': info}).json()
+            
+        def clear_cache(self, info: bool|None=None) -> list:
+            '''Clear the recording info cahce'''
+            return self._delete('recordings/cache', params={'info': info}).json()
 
         def get(self, id: str) -> dict:
             '''Get a recording.
