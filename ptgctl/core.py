@@ -30,6 +30,7 @@ class WebsocketStream:
         self.a, self.kw = a, kw
         self.params = params or {}
         self.kw.setdefault('close_timeout', 10)
+        self.kw.setdefault('max_size', 2**24)
 
     async def __await__(self):
         return await self.connect if self.connect is not None else None
