@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 
 
+INVALID_DEPTH = 10
 
 class Points3D:
     '''Given the Hololens image, depth, and spatial data, convert 2d points to 3d points.
@@ -67,6 +68,20 @@ class Points3D:
         xy_world, xy_pv, dists = transform_points2world_via_closest_depth(
             xy, self.xyz_depth_pv, self.xyz_depth_world)
         return xy_world, dists
+        
+    def transform_center_withinbbox(self, xyxy):
+        ref = np.array([0.5, 0.5])
+        xy1 = xyxy[:, :2]
+        xy2 = xyxy[:, 2:4]
+        diff = xy2 - xy1
+        xyc = xy1 + diff*np.asarray(ref)  # get depth reference point
+        xyzc_world, xyz_pv, dists = transform_points2world_via_closest_depth(
+            xyc, self.xyz_depth_pv, self.xyz_depth_world)
+
+        # mark the dists to INVALID_DEPTH if mapping happens outside bbox        
+        invalid = np.logical_or.reduce([xyz_pv[:,0] < xy1[:,0], xyz_pv[:,1] < xy1[:,1], xyz_pv[:,0] > xy2[:,0], xyz_pv[:,1] > xy2[:,1]])
+        dists[invalid] = INVALID_DEPTH
+        return xyzc_world, dists
 
     def _transform_box(self, xyxy, pts=None, ref=np.array([0.5, 0.5])):
         '''
