@@ -116,6 +116,23 @@ async def raw(api, stream_id, utf=False, **kw):
 
 @util.async2sync
 @util.interruptable
+async def fps(api, stream_id, **kw):
+    import collections
+    sids = stream_id.split('+')
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        last = collections.defaultdict(lambda: 0.0)
+        while True:
+            for sid, ts, _ in await ws.recv_data():
+                t = util.parse_epoch_time(ts)
+                dt = t - last[sid]
+                print(f'{sid}: {ts}', f'∆{dt:.2g}s fps={1/(dt):.2g}' if last[sid] else '')
+                last[sid] = t
+            if len(sids)>1:
+                print(f'rel to {sids[0]}', ' '.join([f'{s}: {last[s]  - last[sids[0]]:.3f}s' for s in sids[1:]]))
+
+
+@util.async2sync
+@util.interruptable
 async def update(api, stream_id, **kw):
     from ptgctl import holoframe
     import tqdm
