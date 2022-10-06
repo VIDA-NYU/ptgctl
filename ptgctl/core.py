@@ -533,7 +533,38 @@ class API:
             '''Set the current step.'''
             return self._put('sessions/recipe/step', step).json()
 
-    sessions = session
+    class sessions(util.Nest):
+        '''Manage sessions.'''
+        def ls(self) -> list:
+            '''Get all recipes.'''
+            return self._get('sess').json()
+
+        def get(self, id: str) -> dict:
+            '''Get a sess by ID.
+            
+            Arguments:
+                id (str): The sess ID.
+            '''
+            return self._get('sess', id).json()
+
+        def new(self, **sess):
+            '''Create a session.
+            '''
+            return self._post('sess', json=sess).json()
+
+        def update(self, id: str, **sess) -> bool:
+            '''Update a session.
+            '''
+            return self._put('sess', id, json=sess).json()
+
+        def delete(self, id: str) -> bool:
+            '''Delete a session.
+            
+            Arguments:
+                id (str): The session ID.
+            '''
+            return self._delete('sess', id).json()
+
 
     # data
 
