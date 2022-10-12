@@ -16,7 +16,7 @@ def aslist(x):
 def pack_entries(data: list, sid=None, ts=None) -> tuple:
     '''Pack multiple byte objects into a single bytearray with numeric offsets.'''
     entries = bytearray()
-    offsets = [0]
+    offsets = []
     offset = 0
     for d in aslist(data):
         offset += len(d)
@@ -25,7 +25,7 @@ def pack_entries(data: list, sid=None, ts=None) -> tuple:
     if sid:
         sid = aslist(sid)
         ts = ts and aslist(ts)
-        assert len(sid) == len(offsets) and (not ts or len(ts) == len(offsets))
+        assert len(sid) == len(offsets) and (not ts or len(ts) == len(offsets)), (len(offsets), len(sid), len(ts))
         offsets = list(zip(sid, ts, offsets)) if ts else list(zip(sid, offsets))
     return offsets, entries
 
