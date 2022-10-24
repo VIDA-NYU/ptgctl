@@ -42,6 +42,7 @@ def unpack(data, keys, prefix=None):
 
 def nested_key(data, key, default=...):
     d = data
+    ki = None
     try:
         for ki in key.split('.'):
             d = d[int(ki) if isinstance(d, list) else ki]
