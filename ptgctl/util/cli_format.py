@@ -87,7 +87,7 @@ def yamltable(d, *a, indent=0, width=2, depth=-1, _keys=(), **kw):
             #     d = astable(d, *a, **kw)
             # else:
             d = '\n'.join([
-                '{}- {}'.format(' '*(width-2), yamltable(
+                '{}{}'.format(' '*(width-2), yamltable(
                     di, *a, indent=indent+1,
                     width=width, depth=depth-1,
                     _keys=_keys + (i,), **kw
