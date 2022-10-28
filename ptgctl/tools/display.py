@@ -15,11 +15,11 @@ log = util.getLogger(__name__, 'debug')
 
 @util.async2sync
 @util.interruptable
-async def imshow(api, stream_id, delay=1, **kw):
+async def imshow(api, stream_id, delay=1, api_output='jpg', **kw):
     '''Show a video stream from the API.'''
     import cv2
-    # from .. import holoframe
-    async with api.data_pull_connect(stream_id, output='jpg', time_sync_id=0, ack=True, **kw) as ws:
+    from .. import holoframe
+    async with api.data_pull_connect(stream_id, output=api_output, time_sync_id=0, ack=True, **kw) as ws:
         t0 = time.time()
         i = 0
         last_epoch = time.time()
@@ -30,8 +30,10 @@ async def imshow(api, stream_id, delay=1, **kw):
 
             for sid, ts, data in entries:
                 i += 1
-                im = np.array(Image.open(io.BytesIO(data)))
-                # im = holoframe.load(data)['image']
+                if api_output:
+                    im = np.array(Image.open(io.BytesIO(data)))
+                else:
+                    im = holoframe.load(data)['image']
                 im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
 
                 ts_frame = util.ts2datetime(ts)

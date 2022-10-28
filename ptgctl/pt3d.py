@@ -33,6 +33,7 @@ class Points3D:
         
         # transform depth into world and image coordinates
         H, W = rgb.shape[:2] if isinstance(rgb, np.ndarray) else rgb
+        self.im_shape = (H, W)
         xyz_depth_cam = transform_magnitude2cam_space(depth, lut)
         xyz_depth_world = transform_cam2world_space(xyz_depth_cam, T_rig2cam_depth, T_rig2world_depth)
         xyz_depth_pv = transform_depth2image_space(xyz_depth_world, T_pv2world, focal_length, principal_point, W)
@@ -52,7 +53,7 @@ class Points3D:
                 return
             xyz_depth_pv = np.floor(self.xyz_depth_pv).astype(int)
             colors = rgb[xyz_depth_pv[:, 1], xyz_depth_pv[:, 0], :]
-            self.rgb = colors / 255.
+            self.rgb = colors
 
     def transform_points(self, xy):
         '''Transform points from 2d image space to 3d world space.

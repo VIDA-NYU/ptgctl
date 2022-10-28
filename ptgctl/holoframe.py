@@ -42,6 +42,7 @@ def unpack(data, keys, prefix=None):
 
 def nested_key(data, key, default=...):
     d = data
+    ki = None
     try:
         for ki in key.split('.'):
             d = d[int(ki) if isinstance(d, list) else ki]
@@ -84,9 +85,9 @@ class SensorType:
 header_dtype = np.dtype([
     ('version', np.uint8), 
     ('ftype', np.uint8),
+    ('time', np.uint64),
 ])
 header2_dtype = np.dtype([
-    ('time', np.uint64),
     ('w', np.uint32),
     ('h', np.uint32),
     ('stride', np.uint32),
@@ -99,7 +100,7 @@ def load(data, metadata=False, only_header=False):
     parse = ByteParser(data)
     read = not metadata  # disable reading images
 
-    version, ftype = parse.pop(header_dtype)
+    version, ftype, ts = parse.pop(header_dtype)
     d = dict(frame_type=ftype)
 
     # special cases
@@ -126,12 +127,21 @@ def load(data, metadata=False, only_header=False):
         d['audio'] = parse.pop(np.float32, (-1, channels), read=read)
         return d
 
-    ts, w, h, stride, info_size = parse.pop(header2_dtype)
-    im_size = w*h*stride
     d['time'] = ts
 
     if only_header:
         return d
+    
+    if version == 1:
+        return load_v1(parse, read, ftype, d)
+    elif version == 2:
+        return load_v2(parse, read, ftype, d)
+    
+    raise ValueError(f"unknown header version: {version}")
+    
+def load_v1(parse, read, ftype, d):
+    w, h, stride, info_size = parse.pop(header2_dtype)
+    im_size = w*h*stride
 
     # image
     if ftype in {SensorType.PV, SensorType.GLF, SensorType.GRR, SensorType.GRF, SensorType.GLL}:
@@ -160,7 +170,7 @@ def load(data, metadata=False, only_header=False):
     if ftype in {SensorType.Accel, SensorType.Gyro, SensorType.Mag}:
         d['data'] = parse.pop(np.float32, (h, w), im_size, read=read)
         timestamps = parse.pop(np.uint64, size=info_size)
-        d['timestamps'] = (timestamps - timestamps[0]) // 100 + ts
+        d['timestamps'] = (timestamps - timestamps[0]) // 100 + d['time']
         return d
 
     # calibration
@@ -170,6 +180,50 @@ def load(data, metadata=False, only_header=False):
         return d
 
     raise ValueError(f"unknown frame type: {ftype}")
+    
+def load_v2(parse, read, ftype, d):
+    w, h, stride, info_size = parse.pop(header2_dtype)
+    im_size = w*h*stride
+    
+    # main
+    if ftype == SensorType.PV:
+        d['image'] = parse.pop_jpeg_image(stride, bgr2rgb=True, read=read)
+        d['cam2world'] = parse.pop(np.float32, (4,4), T=True)
+        d['focalX'], d['focalY'] = parse.pop(np.float32, (2,))
+        d['principalX'], d['principalY'] = parse.pop(np.float32, (2,))
+        return d
+
+    # grayscale
+    if ftype in {SensorType.GLF, SensorType.GRR, SensorType.GRF, SensorType.GLL}:
+        rot = -1 if ftype in {SensorType.GLF, SensorType.GRR} else 1
+        d['image'] = parse.pop_jpeg_image(stride, rot=rot, read=read)
+        d['rig2world'] = parse.pop(np.float32, (4,4), T=True)
+        return d
+
+    # depth
+    if ftype == SensorType.DepthLT:
+        d['image'] = parse.pop(np.uint16, (h, w), read=read)
+        d['rig2world'] = parse.pop(np.float32, (4,4), T=True)
+        info_size -= np_size(np.float32, shape = (4,4))
+        if info_size > 0:
+            d['infrared'] = parse.pop_jpeg_image(info_size, read=read)
+        return d
+
+    # sensors
+    if ftype in {SensorType.Accel, SensorType.Gyro, SensorType.Mag}:
+        d['data'] = parse.pop(np.float32, (h, w), im_size, read=read)
+        timestamps = parse.pop(np.uint64, size=info_size)
+        d['timestamps'] = (timestamps - timestamps[0]) // 100 + d['time']
+        return d
+
+    # calibration
+    if ftype in {SensorType.Calibration}:
+        d['lut'] = parse.pop(np.float32, (w * h, 3), read=read)
+        d['rig2cam'] = parse.pop(np.float32, (4,4), T=True)
+        return d
+
+    raise ValueError(f"unknown frame type: {ftype}")    
+    
 
 
 class ByteParser:
@@ -209,6 +263,14 @@ class ByteParser:
         if rot:
             im = np.rot90(im, rot)
         return im
+    
+    def _read_jpeg_image(self, im: memoryview, rot=0, bgr2rgb=False) -> np.ndarray:
+        im = cv2.imdecode(np.frombuffer(im, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+        if bgr2rgb:
+            im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+        if rot:
+            im = np.rot90(im, rot)
+        return im
 
     def _read_json(self, x: memoryview):
         return json.loads(str(x, 'ascii'))
@@ -223,6 +285,12 @@ class ByteParser:
         x = self._pop_bytes(w * h * stride)
         if read:
             x = self._read_image(x, w, h, **kw)
+        return x
+    
+    def pop_jpeg_image(self, imsize: int, read=True, **kw):
+        x = self._pop_bytes(imsize)
+        if read:
+            x = self._read_jpeg_image(x, **kw)
         return x
 
     def pop_json(self, size=None, read=True):

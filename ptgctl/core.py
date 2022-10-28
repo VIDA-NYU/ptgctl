@@ -75,15 +75,14 @@ class DataStream(WebsocketStream):
                 await self.ws.send(b'')  # ack
         return util.unpack_entries(offsets, content)
 
-    async def send_data(self, data, ts=None):
-        offsets, entries = util.pack_entries([data] if not self.batch else data, ts)
+    async def send_data(self, data, sid=None, ts=None):
+        offsets, entries = util.pack_entries(data, sid, ts)
         if self.batch:
             await self.ws.send(json.dumps(offsets))
         await self.ws.send(bytes(entries))
 
         if self.ack:
             await self.ws.recv()  # ack
-        await asyncio.sleep(1e-6)
 
     async def __aexit__(self, c, e, tb):
         if self.need_to_ack and self.ws:
