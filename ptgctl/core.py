@@ -418,7 +418,7 @@ class API:
                 interval=interval)
 
         @util.async2sync
-        async def replay(self, rec_id, stream_ids, prefix='', fullspeed=False, interval=1):
+        async def replay(self, rec_id, stream_ids, prefix='', recipe=None, fullspeed=False, interval=1):
             '''Replay a recording
 
             Arguments:
@@ -432,6 +432,8 @@ class API:
             ptgctl recordings replay coffee-test-1 main+depthlt --prefix "replay:"
 
             '''
+            if recipe:
+                self.session.start_recipe(recipe)
             async with self.replay_connect(rec_id, stream_ids, prefix, fullspeed, interval) as c:
                 while await c.progress():
                     pass
