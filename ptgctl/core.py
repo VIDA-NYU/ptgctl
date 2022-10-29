@@ -245,7 +245,7 @@ class API:
         # import websockets
         params_str = urlencode({k: v for k, v in params.items() if k and v is not None}) if params else ''
         headers = self._headers(headers)
-        url = os.path.join(self._wsurl, *map(str, url_parts)) + (f'?{params_str}' if params_str else '')
+        url = os.path.join(self._wsurl, *map(str, url_parts)).replace("\\","/") + (f'?{params_str}' if params_str else '')
         log.info('websocket connect: %s', url)
         # return websockets.connect(url, extra_headers=headers, **(connect_kwargs or {}))
         return cls(url, params=params, extra_headers=headers, **(connect_kwargs or {}))
