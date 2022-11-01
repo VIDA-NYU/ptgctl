@@ -63,7 +63,7 @@ def serialize(x):
 
 # top-level functions
 
-def yamltable(d, *a, indent=0, width=2, depth=-1, _keys=(), **kw):
+def yamltable(d, *a, indent=0, width=2, depth=-1, use_table=False, _keys=(), **kw):
     '''Format data as yaml. Any list of dicts will be rendered as a table.
     Arguments:
         *a: positional arguments for ``astable``.
@@ -83,15 +83,15 @@ def yamltable(d, *a, indent=0, width=2, depth=-1, _keys=(), **kw):
                 for k in d)
 
         if isinstance(d, list):
-            # if all(di is None or isinstance(di, dict) for di in d):
-            #     d = astable(d, *a, **kw)
-            # else:
-            d = '\n'.join([
-                '{}{}'.format(' '*(width-2), yamltable(
-                    di, *a, indent=indent+1,
-                    width=width, depth=depth-1,
-                    _keys=_keys + (i,), **kw
-                ).strip()) for i, di in enumerate(d)])
+            if use_table and all(di is None or isinstance(di, dict) for di in d):
+                d = astable(d, *a, **kw)
+            else:
+                d = '\n'.join([
+                    '{}{}'.format(' '*(width-2), yamltable(
+                        di, *a, indent=indent+1,
+                        width=width, depth=depth-1,
+                        _keys=_keys + (i,), **kw
+                    ).strip()) for i, di in enumerate(d)])
 
     if isinstance(d, np.ndarray):
         if d.size > 20 or d.ndim > 2:

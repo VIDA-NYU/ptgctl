@@ -355,6 +355,22 @@ class API:
             '''
             return self._delete('recordings', id).json()
 
+        def hide(self, id: str) -> bool:
+            '''Hide a recording.
+            
+            Arguments:
+                id (str): The recording ID.
+            '''
+            return self._put('recordings', id, 'hide').json()
+
+        def unhide(self, id: str) -> bool:
+            '''Unhide a recording.
+            
+            Arguments:
+                id (str): The recording ID.
+            '''
+            return self._put('recordings', id, 'unhide').json()
+
         def static(self, *fs, out_dir='.', display=False):
             if not any(fs):
                 raise ValueError('You must provide a link to a static file')
@@ -708,6 +724,26 @@ class CLI(API):
                 import getpass
                 password = getpass.getpass(color("What is your password? ", 'purple', 1))
         return super().login(username, password)
+
+    class recordings(API.recordings):
+        def ls(self, info=None, includes=None, missing=None):
+            ds = super().ls(info=info)
+            if ds and isinstance(ds[0], dict):
+                from .util.cli_format import yamltable
+                if includes:
+                    ds = [d for d in ds if any(s in d['streams'] for s in includes)]
+                if missing:
+                    ds = [d for d in ds if all(s not in d['streams'] for s in missing)]
+                return yamltable([
+                    {
+                        'name': d['name'], 
+                        'duration': d['duration'],
+                        'first': d['first-entry-time'],
+                        'streams': ' | '.join(sorted(d['streams'])),
+                    }
+                    for d in ds
+                ])
+            return ds
 
 
 
