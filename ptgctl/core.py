@@ -18,8 +18,8 @@ log = util.getLogger(__name__, level='info')
 
 # URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
 URL = 'https://api.ptg.poly.edu'
-LOCAL_URL = 'http://localhost:7890'
-
+# LOCAL_URL = 'http://localhost:7890'
+PROD_URL = 'https://api.prod.ptg.poly.edu'
 
 
 
@@ -135,7 +135,13 @@ class API:
     _COOKIE_FILE = '~/.ptg.cjar'
     _token = None
 
-    def __init__(self, url: str|None=None, token=None, username: str|None=None, password: str|None=None, local: bool=False, should_log=True, should_log_ws=True):
+    def __init__(
+            self, url: str|None=None, token=None, 
+            username: str|None=None, password: str|None=None, 
+            origin=None,
+            local: bool=False, should_log=True, should_log_ws=True):
+        if not url and origin:
+            url = PROD_URL if origin == 'prod' else URL
         url = url or (LOCAL_URL if local else URL)
         # get url and make sure that it has a protocol on it.
         self.url = url = url.rstrip('/')
