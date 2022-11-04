@@ -51,6 +51,7 @@ ptgctl recordings static my-recording-1 depthlt.mp4  # depth camera
 ptgctl recordings static my-recording-1 mic0.wav   # microphone
 ptgctl recordings static my-recording-1 eye.json   # eye tracking
 ptgctl recordings static my-recording-1 hand.json  # hand tracking
+ptgctl recordings static my-recording-1 pointcloud.json  # point cloud 
 ptgctl recordings static my-recording-1 depthltCal.json  # depth calibration data
 ...
 ```
