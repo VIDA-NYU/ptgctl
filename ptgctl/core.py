@@ -7,7 +7,7 @@ import asyncio
 import contextlib
 from typing import List
 import requests
-from http.cookiejar import LWPCookieJar
+from http.cookiejar import LWPCookieJar, Cookie
 from urllib.parse import urlencode
 from . import util
 from .util import color
@@ -18,10 +18,13 @@ log = util.getLogger(__name__, level='info')
 
 # URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
 URL = 'https://api.ptg.poly.edu'
-# LOCAL_URL = 'http://localhost:7890'
-PROD_URL = 'https://api.prod.ptg.poly.edu'
+LOCAL_URL = 'http://localhost:7890'
 
-
+URL_OPTIONS = {
+    'prod': 'http://172.24.113.200:7890',
+    'wifi': 'http://192.168.50.222:7890',
+    'vm': 'https://api.ptg.poly.edu',
+}
 
 class WebsocketStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
@@ -138,22 +141,12 @@ class API:
     def __init__(
             self, url: str|None=None, token=None, 
             username: str|None=None, password: str|None=None, 
-            origin=None,
-            local: bool=False, should_log=True, should_log_ws=True):
-        if not url and origin:
-            url = PROD_URL if origin == 'prod' else URL
-        url = url or (LOCAL_URL if local else URL)
-        # get url and make sure that it has a protocol on it.
-        self.url = url = url.rstrip('/')
-        secure = True if url.startswith('https://') else False if url.startswith('http://') else None
-        uri = url.split('://', 1)[1] if secure is not None else url
-
+            should_log=True, should_log_ws=True):
+        
         self.should_log = should_log
         self.should_log_ws = should_log_ws
 
-        # get websocket url
-        self._wsurl = f"ws{'s' if secure else ''}://{uri}"
-
+        
         self.sess = requests.Session()
         cookies = LWPCookieJar(os.path.expanduser(self._COOKIE_FILE))
         self.sess.cookies: LWPCookieJar = cookies  # type: ignore
@@ -161,7 +154,24 @@ class API:
             cookies.load()
         except Exception:
             pass
-        self.token = util.Token.from_cookiejar(self.sess.cookies, 'authorization')
+
+        if not url:
+            c = cookies._cookies.get('__') or {}
+            c = (c.get('/') or {}).get('url')
+            if c:
+                url = c.value
+        url = url or 'vm'
+
+        url = URL_OPTIONS.get(url, url)
+        # get url and make sure that it has a protocol on it.
+        secure = True if url.startswith('https://') else False if url.startswith('http://') else None
+        uri = url.split('://', 1)[-1].rstrip('/')
+
+        # get websocket url
+        self.url = f"http{'s' if secure else ''}://{uri}"
+        self._wsurl = f"ws{'s' if secure else ''}://{uri}"
+
+        self.token = util.Token.from_cookiejar(self.sess.cookies, url, 'authorization')
 
         # check token login
         # self._TOKEN_CACHE = token_cache = os.path.expanduser(self._TOKEN_CACHE) if self._TOKEN_CACHE else None
@@ -194,20 +204,20 @@ class API:
         print('git pull:', d)
         subprocess.run(['git', '-C', d, 'pull'], stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
     
-
     def login(self, username: str, password: str):
         '''Login using a username and password to retrieve a token.'''
         assert username and password, "I assume you don't want an empty username and password"
         # get token
         log.info('login: %s %s', username, f'{self.url}/token')
         r = self.sess.post(url=f'{self.url}/token', data={'username': username, 'password': password})
-        # # store token
-        # self.token = r.json()['access_token']
-        # if self._TOKEN_CACHE:
-        #     with open(self._TOKEN_CACHE, 'w') as f:
-        #         f.write(str(self.token))
+
+        self.sess.cookies.set_cookie(Cookie(
+            version=0, name='url', value=self.url, port=None, port_specified=False, 
+            domain='__', domain_specified=True, domain_initial_dot=False, 
+            path='/', path_specified=False, secure=False, expires=int(time.time() + 60*60*24*30), 
+            discard=False, comment=None, comment_url=None, rest={}))
         self.sess.cookies.save()
-        self.token = util.Token.from_cookiejar(self.sess.cookies, 'authorization')
+        self.token = util.Token.from_cookiejar(self.sess.cookies, self.url, 'authorization')
 
     def logout(self):
         '''Logout and discard the token.'''

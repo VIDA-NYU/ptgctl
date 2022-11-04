@@ -47,14 +47,18 @@ class Token(dict):
         return self.expires - datetime.datetime.now() if self.expires else datetime.timedelta(seconds=0)
 
     @classmethod
-    def from_cookiejar(cls, jar, name):
-        for domain, paths in jar._cookies.items():
-            for path, cookies in paths.items():
-                if name in cookies:
-                    token = cookies[name].value.strip('"')
-                    if token and token.startswith('Bearer '):
-                        token = token.split(' ', 1)[-1]
-                    return cls(token)
+    def from_cookiejar(cls, jar, domain, name):
+        domain = domain.split('://')[-1].split('/')[0].split(':', 1)[0]
+        cs = jar._cookies
+        if domain not in cs and f'{domain}.local' in cs:
+            domain = f'{domain}.local'
+        paths = cs.get(domain) or {}    
+        for path, cookies in paths.items():
+            if name in cookies:
+                token = cookies[name].value.strip('"')
+                if token and token.startswith('Bearer '):
+                    token = token.split(' ', 1)[-1]
+                return cls(token)
 
 
 
