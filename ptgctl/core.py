@@ -16,10 +16,6 @@ import tqdm
 log = util.getLogger(__name__, level='info')
 
 
-# URL = 'https://eng-nrf233-01.engineering.nyu.edu/ptg/api'
-URL = 'https://api.ptg.poly.edu'
-LOCAL_URL = 'http://localhost:7890'
-
 URL_OPTIONS = {
     'prod': 'http://172.24.113.200:7890',
     'wifi': 'http://192.168.50.222:7890',
@@ -160,7 +156,7 @@ class API:
             c = (c.get('/') or {}).get('url')
             if c:
                 url = c.value
-        url = url or 'vm'
+        url = url or os.getenv('PTG_URL') or 'vm'
 
         url = URL_OPTIONS.get(url, url)
         # get url and make sure that it has a protocol on it.
