@@ -24,7 +24,7 @@ setuptools.setup(
     install_requires=[
         'requests', 'websockets', 'fire',
         # 'fire @ git+ssh://git@github.com/google/python-fire@master#egg=fire', 
-        'tabulate',
+        'tabulate', 'tqdm',
     ],
     extras_require={
         'test': ['pytest', 'pytest-cov'],
