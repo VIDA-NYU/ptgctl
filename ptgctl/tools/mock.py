@@ -33,11 +33,11 @@ async def video_loop(api, src=0, pos=0, **kw):
 
 DIVS = 4
 @util.async2sync
-async def video(api, src=0, pos=0, width=0.3):
+async def video(api, src=0, pos=0, width=0.3, shape=(300, 400, 3), prefix=None):
     '''Send video (by default your webcam) to the API.'''
     sid = CAM_POS_SIDS[pos]
-    async with api.data_push_connect(sid) as ws:
-        for im in _video_feed(src):
+    async with api.data_push_connect(f'{prefix or ""}{sid}') as ws:
+        for im in _video_feed(src, shape):
             if pos:
                 im = _fake_side_cam(im, pos, width)
             else:
@@ -58,15 +58,24 @@ def _fake_side_cam(im, pos=0, width=0.3):
     return im
 
 
-def _video_feed(src):
-    cap = cv2.VideoCapture(src)
-    while True:
-        ret, im = cap.read()
-        if not ret:
-            break
-        yield im
-
-
+def _video_feed(src, shape=(300, 400, 3)):
+    import tqdm
+    with tqdm.tqdm() as pbar:
+        if src is False:
+            import numpy as np
+            while True:
+                yield np.random.uniform(0, 255, shape).astype('uint8')
+                pbar.update()
+            return
+        cap = cv2.VideoCapture(src)
+        if not cap.isOpened():
+            raise ValueError(f"{cap}")
+        while True:
+            ret, im = cap.read()
+            if not ret:
+                break
+            yield im
+            pbar.update()
 
 @util.async2sync
 async def audio(api, sid='mic0', device=None):

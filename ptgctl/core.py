@@ -17,7 +17,7 @@ log = util.getLogger(__name__, level='info')
 
 
 URL_OPTIONS = {
-    'prod': 'http://172.24.113.200:7890',
+    'prod': 'http://172.24.113.199:7890',
     'wifi': 'http://192.168.50.222:7890',
     'vm': 'https://api.ptg.poly.edu',
 }
@@ -196,9 +196,10 @@ class API:
 
     def upgrade(self):
         import subprocess
-        d = os.path.dirname(__file__)
+        d = os.path.dirname(os.path.dirname(__file__))
         print('git pull:', d)
         subprocess.run(['git', '-C', d, 'pull'], stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
+        subprocess.run(['pip', 'install', '-e', d], stdout=sys.stdout, stderr=sys.stderr, stdin=sys.stdin)
     
     def login(self, username: str, password: str):
         '''Login using a username and password to retrieve a token.'''
@@ -676,10 +677,10 @@ class API:
         from .tools import display
         return display
 
-    # @util.bound_module
-    # def mock(self) -> util.BoundModule:  # lazy import and bind
-    #     from .tools import mock
-    #     return mock
+    @util.bound_module
+    def mock(self) -> util.BoundModule:  # lazy import and bind
+        from .tools import mock
+        return mock
 
     @util.bound_module
     def test(self) -> util.BoundModule:  # lazy import and bind
