@@ -49,7 +49,9 @@ def _PrintResult(component_trace, verbose=False):
         result, trace=component_trace, verbose=verbose)
     output = [help_text]
     Display(output, out=sys.stdout)
-fire.core._PrintResult = _PrintResult
+
+if fire.__version__.split('.') < '0.5.0'.split('.'):
+    fire.core._PrintResult = _PrintResult
 
 
 def serialize(x):
