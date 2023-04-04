@@ -279,6 +279,35 @@ def load_v3(parse, read, ftype, d):
 
     raise ValueError(f"unknown frame type: {ftype}") 
 
+
+
+import io
+import PIL.Image as pil
+def dump_v3(im, ftype=SensorType.PV, ts=0):
+    body = b''
+    body += np.array((3, ftype, ts), dtype=header_dtype).tobytes()
+
+    # main
+    if ftype == SensorType.PV:
+        output = io.BytesIO()
+        pil.fromarray(im).save(output, format='jpeg')
+        imbytes = output.getvalue()
+        body += np.array((im.shape[1], im.shape[0], len(imbytes), 0), dtype=header2_dtype).tobytes()
+        body += imbytes
+        body += np.zeros((4, 4), dtype=np.float32).tobytes()
+        body += np.zeros(2, dtype=np.float32).tobytes()
+        body += np.zeros(2, dtype=np.float32).tobytes()
+        # print(np.zeros((4, 4), dtype=np.float32))
+        # print(np.zeros(2, dtype=np.float32))
+        return body
+
+    raise NotImplemented
+
+
+
+
+
+
 class ByteParser:
     def __init__(self, data):
         self.data = memoryview(data)

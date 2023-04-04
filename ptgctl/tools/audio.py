@@ -43,8 +43,8 @@ class AudioBase:
     t0 = None
     offset = i = 0
 
-    block_duration = 0.05
-    q_duration = 2
+    block_duration = 0.5
+    q_duration = 10
     def __init__(self, **kw):
         self.kw = dict({'samplerate': 44100, 'channels': 1}, **kw)
         # only keep ~2 seconds buffer before fetching more
@@ -87,7 +87,7 @@ class AudioBase:
 
     def _callback_wrap(self, buf, frames, t, status):
         if status:
-            print(status)
+            print('status:', status)
         return self._callback(buf, frames, t, status)
 
     def _callback(self, buf, frames, t, status):
