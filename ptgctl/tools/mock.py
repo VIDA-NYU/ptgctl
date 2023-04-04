@@ -94,10 +94,13 @@ async def audio(api, sid='mic0', device=None):
             while True:
                 y, pos = rec.read()
                 if y is None:
-                    await asyncio.sleep(rec.block_duration / 5)
+                    await asyncio.sleep(1e-6)
                     continue
                 print(y.shape, pos)
-                await ws.send_data(pack_audio(y, pos, rec.sr, rec.channels))
+                await ws.send_data(
+                    [pack_audio(y, pos, rec.sr, rec.channels)],
+                    [sid],
+                )
 
         
 

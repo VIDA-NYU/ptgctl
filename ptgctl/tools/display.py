@@ -199,7 +199,7 @@ async def audio(api, stream_id, **kw):
     # kw2 = dict(last_entry_id=0)
     from .audio import AudioPlayer, unpack_audio
     with AudioPlayer() as player:
-        async with api.data_pull_connect(stream_id, **kw) as ws:
+        async with api.data_pull_connect(stream_id, latest=False, **kw) as ws:
             while True:
                 for sid, ts, data in await ws.recv_data():
                     y, pos, sr, channels = unpack_audio(data)
@@ -209,7 +209,7 @@ async def audio(api, stream_id, **kw):
                     log.debug('read %s: %s (%s) pos=%d shape=%s q=%d', sid, ts, util.ts2datetime(ts).strftime('%c.%f'), pos, y.shape, player.q.qsize())
                     # print('read', sid, ts, util.ts2datetime(ts).strftime('%c.%f'), pos, y.shape, player.q.qsize())
                     player.write(y, pos, sr, channels)
-                    time.sleep(1e-5)
+                    await asyncio.sleep(1e-5)
 
 # last_entry_id=1651848501191-0
 

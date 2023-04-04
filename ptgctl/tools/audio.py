@@ -43,7 +43,7 @@ class AudioBase:
     t0 = None
     offset = i = 0
 
-    block_duration = 0.5
+    block_duration = 0.2
     q_duration = 10
     def __init__(self, **kw):
         self.kw = dict({'samplerate': 44100, 'channels': 1}, **kw)
@@ -64,11 +64,12 @@ class AudioBase:
             return
         self.close()
 
-        log.info('Updating stream params:', kw)
+        log.info(f'Updating stream params: {kw}')
         self.t0 = None
         self.i = 0
         self.sr = self.kw['samplerate']
         self.channels = self.kw['channels']
+        log.info(f'Block size: {self.block_duration} {int(self.sr * self.block_duration)}')
         self.stream = self.StreamCls(
             **self.kw, dtype=np.float32, 
             blocksize=int(self.sr * self.block_duration),
@@ -117,12 +118,19 @@ class AudioRecorder(AudioBase):
         self._init(samplerate=sr, channels=channels)
         return self.q.get(block=block, timeout=timeout) or (None, None)
 
+    im1=0
     def _callback(self, buf, frames, t, status):
         if self.t0 is None:
             self.t0 = t.inputBufferAdcTime
-        i = round((t.inputBufferAdcTime - self.t0) * self.sr * self.channels)
-        self.q.put((np.copy(buf), i))
-
+        if self.im1 is None:
+            self.im1 = 0
+        # i = round((t.inputBufferAdcTime - self.t0) * self.sr * self.channels)
+        self.im1 += buf.size
+        self.q.put((np.copy(buf), self.im1))
+        s = self.q.qsize()
+        if s > 1:
+            print('qsize', s)
+        # print(buf.shape, frames, self.im1)
 
 
 class AudioPlayer(AudioBase):
@@ -148,6 +156,7 @@ class AudioPlayer(AudioBase):
         '''Write an audio chunk to the output buffer.'''
         self._init(samplerate=sr, channels=channels)
         self.q.put((pos, y))
+        print(y.dtype, y.shape, y.min(), y.max())
         time.sleep(1e-3)
 
     def _callback(self, buf, frames, t, status):
