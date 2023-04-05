@@ -156,7 +156,7 @@ class AudioPlayer(AudioBase):
         '''Write an audio chunk to the output buffer.'''
         self._init(samplerate=sr, channels=channels)
         self.q.put((pos, y))
-        print(y.dtype, y.shape, y.min(), y.max())
+        #print(y.dtype, y.shape, y.min(), y.max())
         time.sleep(1e-3)
 
     def _callback(self, buf, frames, t, status):

@@ -87,22 +87,35 @@ def _video_feed(src, shape=(300, 400, 3)):
             pbar.update()
 
 @util.async2sync
-async def audio(api, sid='mic0', device=None):
+async def audio(api, sid='mic0', device=None, weird_offset=1.6):
     from .audio import AudioRecorder, pack_audio
     with AudioRecorder(device=device) as rec:
-        async with api.data_push_connect(sid) as ws:
-            while True:
-                y, pos = rec.read()
-                if y is None:
-                    await asyncio.sleep(1e-6)
-                    continue
-                print(y.shape, pos)
-                await ws.send_data(
-                    [pack_audio(y, pos, rec.sr, rec.channels)],
-                    [sid],
-                )
+        offset = 0
+        while True:
+            async with api.data_push_connect(sid) as ws:
+                while True:
+                    y, pos = rec.read()
+                    if y is None:
+                        await asyncio.sleep(1e-6)
+                        continue
+                    print(y.shape, pos, pos-offset, len(ws.ws.messages), rec.q.qsize())
+                    await ws.send_data(
+                        [pack_audio(y, pos, rec.sr, rec.channels)],
+                        [sid],
+                    )
 
-        
+                    # for some reason, after appoximately this many samples,
+                    # the websocket stops streaming and will stop streaming 
+                    # until around 2.2e6 at which point it crashes. To fix,
+                    # we just restart the websocket before it gets to that 
+                    # point.
+                    if weird_offset and pos-offset > weird_offset * 1e6:
+                        offset=pos
+                        break
+
+def wsvars(ws):
+    return {(k, v) for k, v in vars(ws).items() if isinstance(v, (int, str, bool))}
+
 
 @util.async2sync
 async def movie(api, src, fps=15):
