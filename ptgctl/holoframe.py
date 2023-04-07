@@ -101,26 +101,41 @@ def load(data, metadata=False, only_header=False):
     '''Parse any frame of data coming from the hololens.'''
     parse = ByteParser(data)
     read = not metadata  # disable reading images
-
-    version, ftype, ts = parse.pop(header_dtype)
-    d = dict(frame_type=ftype)
+    
+    if len(data) < header_dtype.itemsize:
+        version, ftype, ts = None, None, None
+    else:
+        version, ftype, ts = parse.pop(header_dtype)
+    d = {} #dict(frame_type=ftype)
 
     # special cases
 
     # json list - no header
-    if ftype in {123,93}:
+    #if ftype in {123,91,93}:
+    #print('\n\n', version, ftype, data[:5], '\n')
+    if version in {None, 121, 91, 123, 93}:
+        # hand+eye - no header
+        if data[1] in {34}:
+            if only_header:
+                return d
+            vals = parse.reset().pop_json()
+            for k in ['left', 'right']:
+                if k in vals and isinstance(vals[k], str):
+                    vals[k] = json.loads(vals[k])
+            d.update(vals)
+            return d
         d['values'] = parse.reset().pop_json()
         return d
     # hand+eye - no header
-    if ftype in {34}: 
-        if only_header:
-            return d
-        vals = parse.reset().pop_json()
-        for k in ['left', 'right']:
-            if k in vals and isinstance(vals[k], str):
-                vals[k] = json.loads(vals[k])
-        d.update(vals)
-        return d
+    # if ftype in {34}: 
+    #     if only_header:
+    #         return d
+    #     vals = parse.reset().pop_json()
+    #     for k in ['left', 'right']:
+    #         if k in vals and isinstance(vals[k], str):
+    #             vals[k] = json.loads(vals[k])
+    #     d.update(vals)
+    #     return d
     # microphone
     if ftype == 172:
         d['sr'], channels, d['pos'] = parse.reset().unpack('<iiq')
