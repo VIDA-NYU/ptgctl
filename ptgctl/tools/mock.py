@@ -10,7 +10,6 @@ import asyncio
 import cv2
 from PIL import Image as pil
 
-from ptgctl.tools.audio import AudioRecorder
 from .. import util
 from ptgctl.holoframe import dump_v3, load
 
