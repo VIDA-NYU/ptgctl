@@ -215,6 +215,107 @@ async def audio(api, stream_id, **kw):
 
 
 
+import cv2
+import orjson
+import collections
+import supervision as sv
+
+@util.async2sync
+@util.interruptable
+async def objects(api, stream_id='main', track_stream_id='detic:image', obj_stream_id='detic:image:misc', **kw):
+    from .. import holoframe
+    box_ann = sv.BoxAnnotator(text_scale=0.8, text_padding=1)
+    mask_ann = sv.MaskAnnotator()
+    imsize = None
+    frames = collections.deque(maxlen=64)
+    det_frame = None
+    track_frame = None
+    async with api.data_pull_connect([stream_id, track_stream_id, obj_stream_id], latest=False, **kw) as ws:
+        while True:
+            for sid, ts, data in await ws.recv_data():
+                ts = util.parse_epoch_time(ts)
+                if sid == 'main':
+                    d = holoframe.load(data)
+                    frame = d['image'][:,:,::-1]
+                    frames.append([ts, frame])
+                    imsize = np.array([frame.shape[1], frame.shape[0]])
+                if imsize is None:
+                    print("No image shape")
+                    continue
+
+                if sid == track_stream_id:
+                    track_frame_ = draw_object_json(data, ts, imsize, frames, mask_ann, box_ann)
+                    if track_frame_ is not None:
+                        track_frame = track_frame_
+                if sid == obj_stream_id:
+                    det_frame_ = draw_object_json(data, ts, imsize, frames, mask_ann, box_ann)
+                    if det_frame_ is not None:
+                        det_frame = det_frame_
+                
+                if sid in {obj_stream_id, track_stream_id}:
+                    cv2.imshow('objects', np.concatenate([x for x in [track_frame, det_frame] if x is not None]))
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+
+def draw_object_json(data, ts, imsize, frames, mask_ann, box_ann):
+    data = orjson.loads(data)
+
+    # get the frame
+    track_frame = next((f for t, f in frames if abs(t - ts) < 1/50), None)
+    if track_frame is None:
+        track_frame = min(frames, key=lambda x: abs(x[0]-ts))
+
+    if not data or track_frame is None:
+        return track_frame
+    # [ {"label": } ]
+
+    # get the detections
+    labels = np.array([d['label'] for d in data])
+    confidence = np.array([d['confidence'] for d in data])
+    
+    xyxy = np.array([d['xyxyn'] for d in data])
+    xyxy[:, 0] *= imsize[0]
+    xyxy[:, 1] *= imsize[1]
+    xyxy[:, 2] *= imsize[0]
+    xyxy[:, 3] *= imsize[1]
+    mask = np.array([contour2mask(d['segment'], imsize) for d in data]) if 'segment' in data[0] else None
+    track_id = np.array([d['segment_track_id'] for d in data]) if 'segment_track_id' in data[0] else None
+    detections = sv.Detections(xyxy=xyxy, mask=mask, class_id=track_id, tracker_id=track_id, confidence=confidence)
+
+    states = []
+    state_confs = []
+    for d in data:
+        dstate = d.get('state')
+        if dstate:
+            max_state, max_conf = max(dstate.items(), key=lambda x: x[1])
+            states.append(max_state)
+            state_confs.append(max_conf)
+        else:
+            states.append(None)
+            state_confs.append(0)
+
+    text = [
+        f'{labels[i]}({confidence[i]:.0%})'+(
+        f' - {states[i]}({state_confs[i]:.0%})' if states[i] else '')
+        for i in range(len(labels))
+    ]
+
+    # draw the frame
+    track_frame = track_frame.copy()
+    track_frame = mask_ann.annotate(track_frame, detections)
+    track_frame = box_ann.annotate(track_frame, detections, text)
+    return track_frame
+
+
+# Implement the contour2mask function
+def contour2mask(normalized_contour, im_size):
+    mask = np.zeros((im_size[1], im_size[0]), dtype=np.uint8)  # Initialize an empty mask
+    for segment in normalized_contour:
+        segment = (segment * im_size).astype(np.int32)
+        cv2.fillPoly(mask, [segment], 1)  # Fill the mask using the contour
+    return mask
+
+
 # @util.async2sync
 # async def debug_holo_stream(api, stream_id, **kw):
 #     '''Show a video stream from the API.'''
