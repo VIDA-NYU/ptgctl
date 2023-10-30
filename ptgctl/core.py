@@ -155,20 +155,24 @@ class DiskReplayerStream:
 
 class DiskRecorderStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
-    def __init__(self, stream_id, recording_name, recording_dir, **kw):
+    def __init__(self, stream_id, recording_name, recording_dir, write_json=False, **kw):
         stream_id = None if stream_id == '*' else stream_id.split('+') if stream_id else None
         self.stream_id = stream_id
         self.recording_dir = recording_dir
         self.recording_name = recording_name
-        self.last = None
+        self.write_json = write_json
 
     async def __await__(self):
         return
 
     async def __aenter__(self):
         from redis_record.storage import get_recorder
+        from redis_record.storage.recorder.json import JsonRecorder
         self.recorder = get_recorder(self.recording_dir)
         self.recorder.ensure_writer(self.recording_name)
+        if self.write_json:
+            self.json_recorder = JsonRecorder(self.recording_dir, list_key='values')
+            self.json_recorder.ensure_writer(self.recording_name)
         return self
 
     async def send_data(self, data, sid=None, ts=None):
@@ -176,9 +180,13 @@ class DiskRecorderStream:
         assert ts, "When recording directly, please give an input timestamp"
         for d, sid in zip(util.aslist(data), util.aslist(sid or self.stream_id)):
             self.recorder.write(sid, ts, {b'd': d})
+            if self.write_json:
+                self.json_recorder.write(sid, ts, d)
 
     async def __aexit__(self, c, e, tb):
         self.recorder.close()
+        if self.write_json:
+            self.json_recorder.close()
 
 
 class API:
@@ -705,7 +713,7 @@ class API:
             return DiskReplayerStream(stream_id, recording_name, recording_dir)
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
-    def data_push_connect(self, stream_id: str, recording_name=None, recording_dir=RECORDING_DIR, **kw) -> 'DataStream':
+    def data_push_connect(self, stream_id: str, recording_name=None, recording_dir=RECORDING_DIR, write_json=False, **kw) -> 'DataStream':
         '''Connect to the server and send data over an asynchronous websocket.
         
         .. code-block:: python
@@ -727,7 +735,7 @@ class API:
         if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
         if recording_name:
-            return DiskRecorderStream(stream_id, recording_name, recording_dir)
+            return DiskRecorderStream(stream_id, recording_name, recording_dir, write_json=write_json)
         return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 
     # tools
