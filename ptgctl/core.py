@@ -131,7 +131,7 @@ class DiskReplayerStream:
     def __init__(self, stream_id, recording_name, recording_dir, **kw):
         stream_id = None if stream_id == '*' else stream_id.split('+') if stream_id else None
         self.stream_id = stream_id
-        self.recording_dir = recording_dir
+        self.recording_dir = os.path.join(recording_dir, 'raw')
         self.recording_name = recording_name
 
     async def __await__(self):
