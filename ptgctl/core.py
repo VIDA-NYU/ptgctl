@@ -168,10 +168,10 @@ class DiskRecorderStream:
     async def __aenter__(self):
         from redis_record.storage import get_recorder
         from redis_record.storage.recorder.json import JsonRecorder
-        self.recorder = get_recorder(self.recording_dir)
+        self.recorder = get_recorder(os.path.join(self.recording_dir, 'raw'))
         self.recorder.ensure_writer(self.recording_name)
         if self.write_json:
-            self.json_recorder = JsonRecorder(self.recording_dir, list_key='values')
+            self.json_recorder = JsonRecorder(os.path.join(self.recording_dir, 'post'), list_key='values')
             self.json_recorder.ensure_writer(self.recording_name)
         return self
 
