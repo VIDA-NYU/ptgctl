@@ -25,6 +25,7 @@ setuptools.setup(
         'requests', 'websockets', 'fire>=0.5.0',
         # 'fire @ git+ssh://git@github.com/google/python-fire@master#egg=fire', 
         'tabulate', 'tqdm',
+        'redis_record>=0.0.3',
     ],
     extras_require={
         'test': ['pytest', 'pytest-cov'],
