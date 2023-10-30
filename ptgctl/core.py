@@ -21,6 +21,7 @@ URL_OPTIONS = {
     'wifi': 'http://192.168.50.222:7890',
     'vm': 'https://api.ptg.poly.edu',
 }
+RECORDING_DIR = os.getenv("RECORDING_DIR") or 'recordings'
 
 class WebsocketStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
@@ -123,6 +124,61 @@ class ReplayStream(WebsocketStream):
         while await self.progress() and (done is None or done.is_set()):
             pass
 
+
+
+class DiskReplayerStream:
+    '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
+    def __init__(self, stream_id, recording_name, recording_dir, **kw):
+        stream_id = None if stream_id == '*' else stream_id.split('+') if stream_id else None
+        self.stream_id = stream_id
+        self.recording_dir = recording_dir
+        self.recording_name = recording_name
+
+    async def __await__(self):
+        return
+
+    async def __aenter__(self):
+        from redis_record.storage import get_player
+        self.player = get_player(self.recording_name, self.recording_dir, subset=self.stream_id, raw_timestamp=True)
+        return self
+    
+    async def recv_data(self):
+        msg = self.player.next_message()
+        if msg:
+            sid, ts, data = msg
+            return [(sid, ts, data['d'])]
+        return []
+    
+    async def __aexit__(self, c, e, tb):
+        self.player.close()
+
+
+class DiskRecorderStream:
+    '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
+    def __init__(self, stream_id, recording_name, recording_dir, **kw):
+        stream_id = None if stream_id == '*' else stream_id.split('+') if stream_id else None
+        self.stream_id = stream_id
+        self.recording_dir = recording_dir
+        self.recording_name = recording_name
+        self.last = None
+
+    async def __await__(self):
+        return
+
+    async def __aenter__(self):
+        from redis_record.storage import get_recorder
+        self.recorder = get_recorder(self.recording_dir)
+        self.recorder.ensure_writer(self.recording_name)
+        return self
+
+    async def send_data(self, data, sid=None, ts=None):
+        ts = ts or time.time()
+        assert ts, "When recording directly, please give an input timestamp"
+        for d, sid in zip(util.aslist(data), util.aslist(sid or self.stream_id)):
+            self.recorder.write(sid, ts, {b'd': d})
+
+    async def __aexit__(self, c, e, tb):
+        self.recorder.close()
 
 
 class API:
@@ -629,7 +685,7 @@ class API:
 
     # data over async websockets
 
-    def data_pull_connect(self, stream_id: str, **kw) -> 'DataStream':
+    def data_pull_connect(self, stream_id: str, recording_name=None, recording_dir=RECORDING_DIR, **kw) -> 'DataStream':
         '''Connect to the server and send data over an asynchronous websocket.
         
         .. code-block:: python
@@ -645,9 +701,11 @@ class API:
             kw.setdefault('batch', True)
         if kw.get('last_entry_id') is True:
             kw['last_entry_id'] = '-'
+        if recording_name:
+            return DiskReplayerStream(stream_id, recording_name, recording_dir)
         return self._ws('data', stream_id, 'pull', cls=DataStream, **kw)
 
-    def data_push_connect(self, stream_id: str, **kw) -> 'DataStream':
+    def data_push_connect(self, stream_id: str, recording_name=None, recording_dir=RECORDING_DIR, **kw) -> 'DataStream':
         '''Connect to the server and send data over an asynchronous websocket.
         
         .. code-block:: python
@@ -668,6 +726,8 @@ class API:
             stream_id = '+'.join(stream_id)
         if '+' in stream_id or stream_id == '*':
             kw.setdefault('batch', True)
+        if recording_name:
+            return DiskRecorderStream(stream_id, recording_name, recording_dir)
         return self._ws('data', stream_id, 'push', cls=DataStream, **kw)
 
     # tools
