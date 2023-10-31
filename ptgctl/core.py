@@ -128,25 +128,33 @@ class ReplayStream(WebsocketStream):
 
 class DiskReplayerStream:
     '''Encapsulates a websocket stream to read/write in the format that the server sends it (json offsets, bytes, json, bytes, etc.)'''
-    def __init__(self, stream_id, recording_name, recording_dir, **kw):
+    def __init__(self, stream_id, recording_name, recording_dir, sleep_time=0.0001, speedup=1, **kw):
         stream_id = None if stream_id == '*' else stream_id.split('+') if stream_id else None
         self.stream_id = stream_id
         self.recording_dir = os.path.join(recording_dir, 'raw')
         self.recording_name = recording_name
+        self.sleep_time = sleep_time
+        self.speedup = speedup
 
     async def __await__(self):
         return
 
     async def __aenter__(self):
         from redis_record.storage import get_player
-        self.player = get_player(self.recording_name, self.recording_dir, subset=self.stream_id, raw_timestamp=True)
+        from redis_record.sync import Sync
+        self.player = get_player(
+            self.recording_name, self.recording_dir, 
+            subset=self.stream_id, raw_timestamp=True)
+        self.sync = Sync(speed_fudge=1/self.speedup)
         return self
     
     async def recv_data(self):
         msg = self.player.next_message()
         if msg:
             sid, ts, data = msg
+            await self.sync.sync_async(util.parse_epoch_time(ts))
             return [(sid, ts, data['d'])]
+        await asyncio.sleep(0.0001)
         return []
     
     async def __aexit__(self, c, e, tb):

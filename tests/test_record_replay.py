@@ -9,7 +9,7 @@ async def recrepl():
     async with api.data_push_connect(['a'], recording_name='asdf') as ws_push:
             for i in range(10):
                 await ws_push.send_data([f'"hi {i}"'.encode()], 'a')
-                time.sleep(0.001)
+                time.sleep(0.05)
             await ws_push.send_data(['"bye"'.encode()], 'a')
 
     timestamps = []
@@ -28,7 +28,7 @@ async def recrepl():
     async with api.data_pull_connect(['b'], recording_name='asdf') as ws_pull:
             for i in range(10):
                 for sid, timestamp, data in await ws_pull.recv_data():
-                    print(sid, timestamp, data)
+                    print(sid, timestamp, data, time.time())
                     if data == b'"bye"': break
                     timestamps2.append(timestamp)
                     assert data == b'"ok"'
