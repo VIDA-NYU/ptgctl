@@ -17,9 +17,15 @@ log = util.getLogger(__name__, level='info')
 
 
 URL_OPTIONS = {
+    # deprecate somehow
     'prod': 'http://172.24.113.199:7890',
     'wifi': 'http://192.168.50.222:7890',
     'vm': 'https://api.ptg.poly.edu',
+
+    # reasonable builtins
+    'localhost': 'http://localhost:7890',
+    'local': 'http://localhost:7890',
+    'docker': 'http://api:8000',
 }
 RECORDING_DIR = os.getenv("RECORDING_DIR") or 'recordings'
 
@@ -228,7 +234,7 @@ class API:
             c = (c.get('/') or {}).get('url')
             if c:
                 url = c.value
-        url = url or os.getenv('PTG_URL') or 'prod'
+        url = url or os.getenv('PTG_URL') or 'localhost'
 
         url = URL_OPTIONS.get(url, url)
         # get url and make sure that it has a protocol on it.
