@@ -121,7 +121,8 @@ async def raw(api, stream_id, utf=False, **kw):
 
 @util.async2sync
 @util.interruptable
-async def file(api, stream_id, out_dir, include_timestamps=False, **kw):
+async def file(api, stream_id, out_dir='', include_timestamps=False, **kw):
+    os.makedirs(out_dir or '.', exist_ok=True)
     async with api.data_pull_connect(stream_id, **kw) as ws:
         with contextlib.ExitStack() as stack:
             files = {}
