@@ -130,9 +130,7 @@ async def file(api, stream_id, out_dir, include_timestamps=False, **kw):
                     if sid not in files:
                         files[sid] = stack.enter_context(open(os.path.join(out_dir, f'{sid}.txt'), 'w'))
                         pbars[sid] = tqdm.tqdm(desc=sid)
-                    if include_timestamps:
-                        files[sid].write(f'{ts}:')
-                    files[sid].write(f"{data.decode('utf-8')}\n")
+                    files[sid].write(f"{f'{ts}:' if include_timestamps else ''}{data.decode('utf-8')}\n")
                     pbars[sid].update()
                     pbars[sid].set_description(f'{sid}: {str(data)[:20]}')
 
