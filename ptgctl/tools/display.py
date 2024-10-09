@@ -1,9 +1,12 @@
 '''This contains functions to display values from the API in interesting ways.
 
 '''
+import os
+import contextlib
 import io
 import json as json_
 import time
+import tqdm
 import asyncio
 import datetime
 import numpy as np
@@ -114,6 +117,24 @@ async def raw(api, stream_id, utf=False, **kw):
                     traceback.print_exc()
                     print("could not decode:", data)
 
+
+@util.async2sync
+@util.interruptable
+async def file(api, stream_id, out_dir, include_timestamps=False, **kw):
+    async with api.data_pull_connect(stream_id, **kw) as ws:
+        with contextlib.ExitStack() as stack:
+            files = {}
+            pbars = {}
+            while True:
+                for sid, ts, data in await ws.recv_data():
+                    if sid not in files:
+                        files[sid] = stack.enter_context(open(os.path.join(out_dir, f'{sid}.txt'), 'w'))
+                        pbars[sid] = tqdm.tqdm(desc=sid)
+                    if include_timestamps:
+                        files[sid].write(f'{ts}:')
+                    files[sid].write(f"{data.decode('utf-8')}\n")
+                    pbars[sid].update()
+                    pbars[sid].set_description(f'{sid}: {str(data)[:20]}')
 
 
 @util.async2sync

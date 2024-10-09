@@ -4,6 +4,28 @@ from typing import Type, TypeVar
 
 
 
+class CachedProperty:
+    def __init__(self, getattr):
+        super().__init__()
+        self.new = getattr
+        self.key = '__{}'.format(getattr.__name__)
+        self._blank = None
+
+    # Works as a property that instantiates a nested class on first access.
+    # the created instance will be used for subsequent access.
+    def __get__(self, instance, owner=None):
+        if instance is None:
+            if self._blank is None:
+                self._blank = self.new(self)
+            return self._blank
+        try:
+            return getattr(instance, self.key)
+        except AttributeError:
+            x = self.new(instance)
+            setattr(instance, self.key, x)
+            return x
+
+
 class BoundModule:
     '''Acts as a method namespace for a class using a module as the namespace.
     
@@ -96,17 +118,10 @@ class BoundModule:
                     import greetings
                     return greetings
         '''
-        attr = f'__{get_module.__name__}'
-        @property
+        @CachedProperty
         @functools.wraps(get_module)
         def inner(self):
-            # only create the bound module once
-            try:
-                return getattr(self, attr)
-            except AttributeError:
-                bm = cls(self, get_module)
-                setattr(self, attr, bm)
-                return bm
+            return cls(self, get_module)
         return inner
 
 bound_module = BoundModule._bind
