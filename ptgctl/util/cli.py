@@ -69,7 +69,11 @@ class BoundModule:
         if not reload and self._loaded:
             return  # be idempotent
 
-        self._wrapped = wrapped = self._get_module(self._self)
+        try:
+            self._wrapped = wrapped = self._get_module(self._self)
+        except ImportError as e:
+            log.warning(f"{e}")
+            self._wrapped = None
         keys = (
             getattr(wrapped, '__bind__', None) or 
             getattr(wrapped, '__all__', None) or 
@@ -87,7 +91,7 @@ class BoundModule:
         # mimic - idk
         for k in self._COPY_OVER:
             setattr(self, k, getattr(self._wrapped, k))
-        self._loaded = True
+        self._loaded = self._wrapped is not None
 
     def _is_public(self, func):
         return is_public_func(func) and belongs_to_module(self._wrapped, func)

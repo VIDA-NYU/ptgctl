@@ -3,7 +3,7 @@ import setuptools
 NAME = 'ptgctl'
 
 deps = {
-    'image': ['Pillow', 'opencv-python', 'numpy'],
+        'image': ['Pillow', 'opencv-python', 'numpy', 'supervision'],
     'audio': ['sounddevice', 'soundfile'],
 }
 
@@ -24,7 +24,7 @@ setuptools.setup(
     install_requires=[
         'requests', 'websockets', 'fire>=0.5.0',
         # 'fire @ git+ssh://git@github.com/google/python-fire@master#egg=fire', 
-        'tabulate', 'tqdm',
+        'tabulate', 'tqdm', 'IPython',
         'redis_record>=0.0.4',
     ],
     extras_require={

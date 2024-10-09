@@ -8,8 +8,6 @@ import io
 import time
 import asyncio
 import cv2
-from PIL import Image as pil
-
 from .. import util
 from ptgctl.holoframe import dump_v3, load
 
@@ -33,12 +31,12 @@ async def video_loop(api, src=0, pos=0, **kw):
 
 DIVS = 4
 @util.async2sync
-async def video(api, src=0, pos=0, width=0.3, shape=(300, 400, 3), fps=30, stepbystep=False, prefix=None):
+async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, stepbystep=False, prefix=None):
     '''Send video (by default your webcam) to the API.'''
     sid = CAM_POS_SIDS[pos]
     sid = f'{prefix or ""}{sid}'
     async with api.data_push_connect(sid, batch=True) as ws:
-        for im in _video_feed(src, shape):
+        async for im in _video_feed(src, fps, shape):
             if pos:
                 im = _fake_side_cam(im, pos, width)
             # else:
@@ -48,11 +46,11 @@ async def video(api, src=0, pos=0, width=0.3, shape=(300, 400, 3), fps=30, stepb
             if stepbystep:
                 input()
             await ws.send_data([dump_v3(im)], [sid], [util.format_epoch_time(time.time())])
-            await asyncio.sleep(1/fps)
 
 def _img_dump(im, format='jpeg'):
+    from PIL import Image
     output = io.BytesIO()
-    pil.fromarray(im).save(output, format=format)
+    Image.fromarray(im).save(output, format=format)
     return output.getvalue()
 
 
@@ -66,24 +64,44 @@ def _fake_side_cam(im, pos=0, width=0.3):
     return im
 
 
-def _video_feed(src, shape=(300, 400, 3)):
+async def _video_feed(src, fps=None, shape=None):
     import tqdm
     with tqdm.tqdm() as pbar:
         if src is False:
             import numpy as np
+            if isinstance(shape, int):
+                shape = (shape, shape, 3)
+            if shape is None:
+                shape = (300, 400, 3)
             while True:
                 yield np.random.uniform(0, 255, shape).astype('uint8')
                 pbar.update()
+                if fps:
+                    await asyncio.sleep(1/fps)
             return
         cap = cv2.VideoCapture(src)
+        vid_fps = cap.get(cv2.CAP_PROP_FPS)
+        skip = max(1, int(vid_fps / fps)) if fps else 1
         if not cap.isOpened():
             raise ValueError(f"{cap}")
+        i = 0
         while True:
             ret, im = cap.read()
             if not ret:
                 break
+            i += 1
+            if i % skip:
+               continue 
+            if isinstance(shape, int):
+                ratio = max(shape/im.shape[0], shape/im.shape[1])
+                im = cv2.resize(im, (0, 0), fx=ratio, fy=ratio)
+            elif shape:
+                im = cv2.resize(im, (shape[1], shape[0]))
             yield im
             pbar.update()
+            if fps:
+                await asyncio.sleep(1/fps)
+
 
 @util.async2sync
 async def audio(api, sid='mic0', device=None, weird_offset=1.6):

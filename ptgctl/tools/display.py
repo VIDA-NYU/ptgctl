@@ -10,7 +10,6 @@ import tqdm
 import asyncio
 import datetime
 import numpy as np
-from PIL import Image
 from .. import util
 
 log = util.getLogger(__name__, 'debug')
@@ -21,6 +20,7 @@ log = util.getLogger(__name__, 'debug')
 async def imshow(api, stream_id, delay=1, api_output='jpg', stream_format=None, **kw):
     '''Show a video stream from the API.'''
     import cv2
+    from PIL import Image
     from .. import holoframe
     async with api.data_pull_connect(stream_id, output=api_output, input=stream_format, time_sync_id=0, ack=True, **kw) as ws:
         t0 = time.time()
@@ -55,6 +55,7 @@ async def imshow(api, stream_id, delay=1, api_output='jpg', stream_format=None, 
 def imshow1(api, stream_id, **kw):#, raw_holo=False
     '''Show a single frame of a stream.'''
     import cv2
+    from PIL import Image
     # if raw_holo:
     #     from .. import holoframe
     for sid, ts, data in api.data(stream_id, output='jpg', **kw):
@@ -370,6 +371,7 @@ def ascii_image(img, width=60, height=None, invert=False, preserve_aspect=True):
     if img is None:
         return ''
     if isinstance(img, np.ndarray):
+        from PIL import Image
         img = Image.fromarray(img)
     # resize the image
     w, h = img.size
@@ -393,4 +395,5 @@ def _aspect(w, h, w_im, h_im, preserve=True):
     return int(w), int(h)
 
 def ascii_test(api, path, width=60, invert=False):
+    from PIL import Image
     print(ascii_image(Image.open(path), width, invert))
