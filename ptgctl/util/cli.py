@@ -58,6 +58,10 @@ class BoundModule:
 
     '''
     _COPY_OVER = ['__doc__', '__name__', '__file__', '__package__']
+    __name__ = None
+    __doc__ = None
+    __file__ = None
+    __package__ = None
     def __init__(self, parent, get_module, lazy=True):
         self._self = parent
         self._get_module = get_module
