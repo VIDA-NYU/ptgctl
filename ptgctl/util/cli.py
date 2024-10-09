@@ -78,7 +78,7 @@ class BoundModule:
             self._wrapped = wrapped = self._get_module(self._self)
         except ImportError as e:
             warnings.warn(f'Error Importing {self.__name__}: {e}')
-            self._wrapped = None
+            self._wrapped = wrapped = None
         keys = (
             getattr(wrapped, '__bind__', None) or 
             getattr(wrapped, '__all__', None) or 
