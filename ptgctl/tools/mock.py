@@ -85,6 +85,8 @@ async def _video_feed(src, fps=None, shape=None):
         if not cap.isOpened():
             raise ValueError(f"{cap}")
         i = 0
+        t0 = time.time()
+        lag = 0
         while True:
             ret, im = cap.read()
             if not ret:
@@ -100,7 +102,11 @@ async def _video_feed(src, fps=None, shape=None):
             yield im
             pbar.update()
             if fps:
-                await asyncio.sleep(1/fps)
+                t = time.time()
+                dt = 1/fps - (t-t0) - lag
+                await asyncio.sleep(max(0, dt))
+                lag = max(-dt, 0)
+                t0 = t + max(0, dt)
 
 
 @util.async2sync
