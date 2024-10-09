@@ -4,6 +4,7 @@
 WARNING: this doesn't upload video in the right format. 
 
 '''
+import os
 import io
 import time
 import asyncio
@@ -31,12 +32,12 @@ async def video_loop(api, src=0, pos=0, **kw):
 
 DIVS = 4
 @util.async2sync
-async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, stepbystep=False, prefix=None):
+async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, speed=1, stepbystep=False, prefix=None):
     '''Send video (by default your webcam) to the API.'''
     sid = CAM_POS_SIDS[pos]
     sid = f'{prefix or ""}{sid}'
     async with api.data_push_connect(sid, batch=True) as ws:
-        async for im in _video_feed(src, fps, shape):
+        async for im in _video_feed(src, fps, shape, speed=speed):
             if pos:
                 im = _fake_side_cam(im, pos, width)
             # else:
@@ -46,7 +47,7 @@ async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, stepbystep=Fal
             if stepbystep:
                 input()
             await ws.send_data([dump_v3(im)], [sid], [util.format_epoch_time(time.time())])
-
+    
 def _img_dump(im, format='jpeg'):
     from PIL import Image
     output = io.BytesIO()
@@ -64,49 +65,56 @@ def _fake_side_cam(im, pos=0, width=0.3):
     return im
 
 
-async def _video_feed(src, fps=None, shape=None):
+async def _video_feed(src, fps=None, shape=None, speed=None):
     import tqdm
-    with tqdm.tqdm() as pbar:
-        if src is False:
-            import numpy as np
-            if isinstance(shape, int):
-                shape = (shape, shape, 3)
-            if shape is None:
-                shape = (300, 400, 3)
+    if src is False:
+        import numpy as np
+        if isinstance(shape, int):
+            shape = (shape, shape, 3)
+        if shape is None:
+            shape = (300, 400, 3)
+        with tqdm.tqdm() as pbar:
             while True:
                 yield np.random.uniform(0, 255, shape).astype('uint8')
                 pbar.update()
                 if fps:
                     await asyncio.sleep(1/fps)
             return
-        cap = cv2.VideoCapture(src)
-        vid_fps = cap.get(cv2.CAP_PROP_FPS)
-        skip = max(1, int(vid_fps / fps)) if fps else 1
-        if not cap.isOpened():
-            raise ValueError(f"{cap}")
-        i = 0
-        t0 = time.time()
-        lag = 0
+    cap = cv2.VideoCapture(src)
+    n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    vid_fps = cap.get(cv2.CAP_PROP_FPS)
+    duration = n_frames/vid_fps
+    fps = fps or vid_fps
+    skip = (vid_fps / fps if fps else 1)*speed
+    if not cap.isOpened():
+        raise ValueError(f"{cap}")
+    
+    t0 = t00 = time.time()
+    lag = 0
+    fps_counter = 0
+    with tqdm.tqdm(total=int(duration*fps/speed), desc=f'{os.path.basename(src)}: fps={vid_fps:.0f}->{fps:.0f} [x{speed:.1g}]. duration={duration:.1f}s') as pbar:
         while True:
             ret, im = cap.read()
             if not ret:
                 break
-            i += 1
-            if i % skip:
-               continue 
-            if isinstance(shape, int):
-                ratio = max(shape/im.shape[0], shape/im.shape[1])
-                im = cv2.resize(im, (0, 0), fx=ratio, fy=ratio)
-            elif shape:
-                im = cv2.resize(im, (shape[1], shape[0]))
-            yield im
-            pbar.update()
-            if fps:
-                t = time.time()
-                dt = 1/fps - (t-t0) - lag
-                await asyncio.sleep(max(0, dt))
-                lag = max(-dt, 0)
-                t0 = t + max(0, dt)
+            fps_counter += 1
+            while fps_counter >= skip:
+                fps_counter -= skip
+
+                if isinstance(shape, int):
+                    ratio = max(shape/im.shape[0], shape/im.shape[1])
+                    im = cv2.resize(im, (0, 0), fx=ratio, fy=ratio)
+                elif shape:
+                    im = cv2.resize(im, (shape[1], shape[0]))
+                yield im
+                pbar.update()
+                if fps:
+                    t = time.time()
+                    dt = 1/fps - (t-t0) - lag
+                    await asyncio.sleep(max(0, dt))
+                    lag = max(-dt, 0)
+                    t0 = t + max(0, dt)
+    print(f"Done. took {time.time()-t00:.1f} seconds.")
 
 
 @util.async2sync
