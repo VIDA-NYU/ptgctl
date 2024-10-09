@@ -1,7 +1,7 @@
 import inspect
 import functools
+import warnings
 from typing import Type, TypeVar
-
 
 
 class CachedProperty:
@@ -63,6 +63,7 @@ class BoundModule:
     __file__ = None
     __package__ = None
     def __init__(self, parent, get_module, lazy=True):
+        self.__name__ = get_module.__name__
         self._self = parent
         self._get_module = get_module
         self._loaded = False
@@ -76,7 +77,7 @@ class BoundModule:
         try:
             self._wrapped = wrapped = self._get_module(self._self)
         except ImportError as e:
-            log.warning(f"{e}")
+            warnings.warn(f'Error Importing {self.__name__}: {e}')
             self._wrapped = None
         keys = (
             getattr(wrapped, '__bind__', None) or 
@@ -94,7 +95,7 @@ class BoundModule:
         self._dir = list(self._public)
         # mimic - idk
         for k in self._COPY_OVER:
-            setattr(self, k, getattr(self._wrapped, k))
+            setattr(self, k, getattr(self._wrapped, k, getattr(self, k, None)))
         self._loaded = self._wrapped is not None
 
     def _is_public(self, func):
