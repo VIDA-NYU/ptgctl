@@ -22,7 +22,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     entry_points={'console_scripts': ['{name}={name}:main'.format(name=NAME)]},
     install_requires=[
-        'requests', 'websockets', 'fire>=0.5.0',
+        'requests', 'websockets>=14.0.0', 'fire>=0.5.0',
         # 'fire @ git+ssh://git@github.com/google/python-fire@master#egg=fire', 
         'tabulate', 'tqdm', 'IPython',
         'redis_record>=0.0.4',
