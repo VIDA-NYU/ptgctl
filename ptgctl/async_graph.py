@@ -93,6 +93,17 @@ class SlidingQueue(asyncio.Queue):
         self._wakeup_next(self._getters)
 
 
+class Queue(asyncio.Queue):
+    def read_buffer(self):
+        output = []
+        for i in range(len(self._unread)):
+            try:
+                output.append(self._unread.popleft())
+            except IndexError:
+                pass
+        return output
+
+
 
 async def sample_producer(q, sleep=1, limit=20, name='put'):
     print('starting', name)
