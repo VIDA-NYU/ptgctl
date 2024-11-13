@@ -32,10 +32,12 @@ async def video_loop(api, src=0, pos=0, **kw):
 
 DIVS = 4
 @util.async2sync
-async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, speed=1, stepbystep=False, prefix=None):
+async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, speed=1, stepbystep=False, prefix=None, skill=None):
     '''Send video (by default your webcam) to the API.'''
     sid = CAM_POS_SIDS[pos]
     sid = f'{prefix or ""}{sid}'
+    if skill:
+        api.session.start_recipe(skill)
     async with api.data_push_connect(sid, batch=True) as ws:
         async for im in _video_feed(src, fps, shape, speed=speed):
             if pos:

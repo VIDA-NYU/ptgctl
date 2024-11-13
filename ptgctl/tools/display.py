@@ -121,16 +121,34 @@ async def raw(api, stream_id, utf=False, **kw):
 
 @util.async2sync
 @util.interruptable
-async def file(api, stream_id, out_dir='', include_timestamps=False, **kw):
+async def file(api, stream_id, out_dir='', include_timestamps=False, group_sessions=True, **kw):
     os.makedirs(out_dir or '.', exist_ok=True)
+    kw.setdefault('latest', False)
+    SESSION_ID = 'event:session:id'
+    if group_sessions:
+        stream_id += '+' + SESSION_ID
+
     async with api.data_pull_connect(stream_id, **kw) as ws:
         with contextlib.ExitStack() as stack:
             files = {}
             pbars = {}
+            current_session = api.session.id()
+            print("current session:", current_session)
             while True:
                 for sid, ts, data in await ws.recv_data():
+                    if group_sessions and sid == SESSION_ID:
+                        print("Changing session", sid)
+                        stack.pop_all().close()
+                        files.clear()
+                        current_session = data.decode('utf-8')
+                    if group_sessions and not current_session:
+                        continue
                     if sid not in files:
-                        files[sid] = stack.enter_context(open(os.path.join(out_dir, f'{sid}.txt'), 'w'))
+                        sid_file = os.path.join(out_dir, current_session or 'unknown-session' if group_sessions else '', f'{sid}.txt')
+                        print("Opening file", sid_file)
+                        os.makedirs(os.path.dirname(sid_file), exist_ok=True)
+                        files[sid] = stack.enter_context(open(sid_file, 'w'))
+                    if sid not in pbars:
                         pbars[sid] = tqdm.tqdm(desc=sid)
                     files[sid].write(f"{f'{ts}:' if include_timestamps else ''}{data.decode('utf-8')}\n")
                     pbars[sid].update()

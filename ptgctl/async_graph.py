@@ -64,15 +64,23 @@ class SlidingQueue(asyncio.Queue):
         super().__init__(maxsize)
 
     def _init(self, maxsize):
-        self._queue = collections.deque(maxlen=maxsize)
+        self._queue = collections.deque(maxlen=1000)
+        self._latest = collections.deque(maxlen=1)
         self._buffer = collections.deque(maxlen=self.buffersize)
 
     def _put(self, item):
+        self._latest.append(item)
         self._queue.append(item)
         self._buffer.append(item)
 
-    def read_buffer(self):
-        return list(self._buffer)
+    def read_buffer(self):  # TODO: rename
+        output = []
+        for i in range(len(self._queue)):
+            try:
+                output.append(self._queue.popleft())
+            except IndexError:
+                pass
+        return output
     
     def push(self, item):
         full = self.full()
