@@ -51,8 +51,12 @@ ts2datetime = parse_time  # deprecated
 def format_time(dt: datetime.datetime):
     return format_epoch_time(dt.timestamp())
 
-def format_epoch_time(tid: float):
-    return f'{int(tid * 1000)}-0'
+def format_epoch_time(tid: float, tlast=None):
+    tms = int(tid * 1000)
+    i = 0
+    if tlast and tms == int(tlast * 1000):
+        i = int((tid*1000 - tms)*100)
+    return f'{tms}-{i}'
 
 
 # misc

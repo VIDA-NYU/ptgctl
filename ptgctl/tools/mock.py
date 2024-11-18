@@ -36,6 +36,7 @@ async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, speed=1, stepb
     '''Send video (by default your webcam) to the API.'''
     sid = CAM_POS_SIDS[pos]
     sid = f'{prefix or ""}{sid}'
+    tlast = 0
     async with api.data_push_connect(sid, batch=True) as ws:
         async for im in _video_feed(src, fps, shape, speed=speed):
             if pos:
@@ -46,7 +47,9 @@ async def video(api, src=0, pos=0, width=0.3, shape=None, fps=15, speed=1, stepb
             # print(load(dump_v3(im)))
             if stepbystep:
                 input()
-            await ws.send_data([dump_v3(im)], [sid], [util.format_epoch_time(time.time())])
+            t=time.time()
+            await ws.send_data([dump_v3(im)], [sid], [util.format_epoch_time(t, tlast)])
+            tlast = t
     
 def _img_dump(im, format='jpeg'):
     from PIL import Image
