@@ -59,20 +59,31 @@ async def error_handler(func, *a, __retry_every=5, **kw):
 
 
 class SlidingQueue(asyncio.Queue):
-    def __init__(self, maxsize=1, buffersize=8):
+    def __init__(self, maxsize=1024, buffersize=32):
         self.buffersize = buffersize
         super().__init__(maxsize)
 
     def _init(self, maxsize):
-        self._queue = collections.deque(maxlen=maxsize)
+        self._queue = collections.deque(maxlen=1)
         self._buffer = collections.deque(maxlen=self.buffersize)
+        self._unread = collections.deque(maxlen=maxsize)
 
     def _put(self, item):
         self._queue.append(item)
+        self._unread.append(item)
         self._buffer.append(item)
 
-    def read_buffer(self):
+    def read_buffer(self):  # TODO: rename
         return list(self._buffer)
+
+    def pop(self):
+        output = []
+        for i in range(len(self._unread)):
+            try:
+                output.append(self._unread.popleft())
+            except IndexError:
+                pass
+        return output
     
     def push(self, item):
         full = self.full()
@@ -80,6 +91,17 @@ class SlidingQueue(asyncio.Queue):
         self._unfinished_tasks += not full
         self._finished.clear()
         self._wakeup_next(self._getters)
+
+
+class Queue(asyncio.Queue):
+    def read_buffer(self):
+        output = []
+        for i in range(len(self._unread)):
+            try:
+                output.append(self._unread.popleft())
+            except IndexError:
+                pass
+        return output
 
 
 

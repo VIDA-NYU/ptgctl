@@ -341,7 +341,7 @@ class API:
 
         log.info('websocket connect: %s', url)
         # return websockets.connect(url, extra_headers=headers, **(connect_kwargs or {}))
-        return cls(url, params=params, extra_headers=headers, **(connect_kwargs or {}))
+        return cls(url, params=params, additional_headers=headers, **(connect_kwargs or {}))
 
     def ping(self, error=False):
         if error:
